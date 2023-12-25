@@ -1,5 +1,5 @@
 # GsplatStudio
-a framework for 3d gaussian splatting experiment
+A framework for 3d gaussian splatting experiment
 
 ## TODO
 - [ ] Add system class

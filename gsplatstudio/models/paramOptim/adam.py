@@ -2,14 +2,25 @@ import torch
 import torch.nn as nn
 import gsplatstudio
 from gsplatstudio.utils.general_utils import get_expon_lr_func
+from gsplatstudio.utils.config import parse_structured
+from gsplatstudio.utils.type_utils import *
+
+@dataclass
+class adamAcustomlrConfig:
+    position_lr_delay_mult: float = 0.01
+    position_lr_final: float = 1.6e-06
+    position_lr_init:float =  0.00016
+    position_lr_max_steps: float = 30000
+    feature_lr: float = 0.0025
+    rotation_lr: float = 0.001
+    scaling_lr: float = 0.005
+    opacity_lr: float = 0.05
+
+
 @gsplatstudio.register("adam+customLR-paramOptim")
-
-
-
-
 class adamAcustomlr:
     def __init__(self, cfg):
-        self.cfg = cfg
+        self.cfg = parse_structured(adamAcustomlrConfig, cfg)
         
 
     def init_optim(self,param_lr_group, spatial_lr_scale, max_iter):

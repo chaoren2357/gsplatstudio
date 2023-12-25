@@ -17,8 +17,8 @@ class Experiment:
         self.logger.info("Experiment folder: {}".format(self.cfg.trial_dir))
         
         self.logger.info("Loading components...")
-        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data)
-        self.system = gsplatstudio.find(self.cfg.system_type)()  
+        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, Path(self.cfg.trial_dir) / 'results')
+        self.system = gsplatstudio.find(self.cfg.system_type)(self.cfg.system)  
         self.model = gsplatstudio.find(self.cfg.system.representation_type)(self.cfg.system.representation)
         self.loss = gsplatstudio.find(self.cfg.system.loss_type)(self.cfg.system.loss)
         self.trainer = gsplatstudio.find(self.cfg.system.trainer_type)(self.cfg.system.trainer)
@@ -28,6 +28,7 @@ class Experiment:
         self.trainer.load(logger = self.logger, data = self.data, model = self.model, 
                           loss = self.loss, renderer = self.renderer,
                           paramOptim = self.paramOptim, structOptim = self.structOptim)
+        self.system.load(logger = self.logger, data = self.data, trainer = self.trainer)
         
 
     def _prepare_experiment_folders(self,config_path):
@@ -51,23 +52,23 @@ class Experiment:
         setup_logging(self.cfg.logger, log_dir)
         self.logger =  init_logger(self.cfg.trial_name)
 
-        
+        # render results
+        view_dir = Path(self.cfg.trial_dir) / 'results'
+        view_dir.mkdir(parents=True, exist_ok=True)
+        namespace_str = f"Namespace(data_device='{self.cfg.data.data_device}', \
+                          eval={self.cfg.data.eval}, images='images', \
+                          model_path='{str(view_dir)}', resolution={self.cfg.data.resolution}, \
+                          sh_degree={self.cfg.system.representation.max_sh_degree}, source_path='{self.cfg.data.source_path}', \
+                          white_background={self.cfg.system.renderer.background_color == [255,255,255]})"
+        with open(view_dir / "cfg_args", 'w') as cfg_log_f:
+            cfg_log_f.write(namespace_str)
+
         # TODO:ckpts
         # self.cfg.ckpt_dir = Path(self.cfg.trial_dir) / 'ckpts'
 
 
-        # TODO:render results
-        # self.cfg.results_dir = Path(self.cfg.trial_dir) / 'results'
 
-        # Add cfg file for the viewer(will remove in the future)
-        self.cfg.data.model_path = self.cfg.trial_dir
-        namespace_str = f"Namespace(data_device='{self.cfg.data.data_device}', \
-                          eval={self.cfg.data.eval}, images='{self.cfg.data.images}', \
-                          model_path='{self.cfg.data.model_path}', resolution={self.cfg.data.resolution}, \
-                          sh_degree={self.cfg.system.representation.max_sh_degree}, source_path='{self.cfg.data.source_path}', \
-                          white_background={self.cfg.system.renderer.background_color == [255,255,255]})"
-        with open(Path(self.cfg.data.model_path) / "cfg_args", 'w') as cfg_log_f:
-            cfg_log_f.write(namespace_str)
+        
 
 
     def _init_seed(self,seed):
@@ -79,5 +80,5 @@ class Experiment:
 
 
     def run(self):
-        self.trainer.train()
-        # self.system.run()
+        # self.trainer.train()
+        self.system.run()

@@ -1,14 +1,24 @@
 import torch
-from tqdm import tqdm
 from pathlib import Path
 from random import randint
 import gsplatstudio
 from gsplatstudio.utils.progress_bar import ProgressBar
-import pandas as pd
+from gsplatstudio.utils.type_utils import *
+from gsplatstudio.utils.config import parse_structured
+
+@dataclass
+class GaussTrainerConfig:
+    detect_anomaly: bool = False
+    iterations: int = 30000
+    start_checkpoint: list = field(default_factory=list)
+    save_iterations: list = field(default_factory=list)
+    test_iterations: list = field(default_factory=list)
+    ckpt_iterations: list = field(default_factory=list)
+
 @gsplatstudio.register("gaussian-trainer")
 class GaussTrainer:
     def __init__(self, cfg) -> None:
-        self.cfg = cfg
+        self.cfg = parse_structured(GaussTrainerConfig, cfg)
 
     def load(self, logger, data, model, loss, structOptim, paramOptim, renderer, checkpoint=None):
         self.logger = logger
@@ -20,7 +30,7 @@ class GaussTrainer:
         self.renderer = renderer
         self.checkpoint = checkpoint
 
-        spatial_lr_scale = self.data.cameras_extent
+        spatial_lr_scale = self.data.spatial_scale
         
         # init model from data
         self.model.init_from_pcd(self.data.scene_info.point_cloud, spatial_lr_scale)
@@ -33,7 +43,7 @@ class GaussTrainer:
         self.structOptim.init_optim(self.model, spatial_lr_scale)
         
         # init progress bar
-        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations + 1)
+        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
 
     def train(self) -> None:
         
@@ -42,7 +52,6 @@ class GaussTrainer:
         # if self.cfg.checkpoint:
         #     (model_params, first_iter) = torch.load(checkpoint)
         #     self.model.restore(model_params, opt)
-        loss_list = [0.0]
         ema_loss_for_log = 0.0
         viewpoint_stack = None
         is_white_background = self.renderer.background_color == [255,255,255]
@@ -69,29 +78,26 @@ class GaussTrainer:
             with torch.no_grad():
                 # Progress bar
                 ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
-                loss_list.append(ema_loss_for_log)
                 self.progress_bar.update(iteration, ema_loss_for_log=ema_loss_for_log)
 
                 # Log and save
                 if iteration in self.cfg.save_iterations:
                     self.logger.info(f"\n[ITER {iteration}] Saving Gaussians")
                     self.save(iteration)
+
                 # Densification
                 self.structOptim.update(iteration, self.model, self.paramOptim, render_pkg, is_white_background)
                 
                 # Optimizer step
-                
                 self.paramOptim.update_optim(iteration)
                 
                 # Checkpoint saving step
-                if iteration in self.cfg.ckpt_iterations:
-                    self.logger.info(f"\n[ITER {iteration}] Saving Checkpoint")
-                    torch.save((self.model.capture(), iteration), self.data.cfg.model_path + "/chkpnt" + str(iteration) + ".pth")
-        # plot_loss_values(loss_list, 1,8000)
-        df = pd.DataFrame(loss_list)
-        df.to_csv('loss_origin.csv', index=False)
+                # if iteration in self.cfg.ckpt_iterations:
+                #     self.logger.info(f"\n[ITER {iteration}] Saving Checkpoint")
+                #     torch.save((self.model.capture(), iteration), self.data.trial_dir + "/chkpnt" + str(iteration) + ".pth")
+
     def save(self, iteration):
-        ply_path = Path(self.data.cfg.model_path) / f"point_cloud/iteration_{iteration}" / "point_cloud.ply"
+        ply_path = Path(self.data.trial_dir) / f"point_cloud/iteration_{iteration}" / "point_cloud.ply"
         ply_path.parent.mkdir(parents=True, exist_ok=True)
         self.model.save_ply(ply_path)
 

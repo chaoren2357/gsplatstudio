@@ -5,29 +5,30 @@ from gsplatstudio.utils.config import parse_structured
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 from gsplatstudio.data.colmap_helper import *
-from dataclasses import dataclass
 
 
 @dataclass
 class ColmapDataModuleConfig:
+    processor_type: str
+    processor: str
     source_path: str = '/mnt/d/data/GaussianData/carla_sample'
     eval: bool = False
     data_device: str = 'cuda'
     resolution: int = -1
-    images: str = 'images'
-    model_path: str = ''
+    resolution_scales: list = field(default_factory=list)
     shuffle: bool = True
 
 
-@gsplatstudio.register("colmap")
+@gsplatstudio.register("colmap-data")
 class ColmapDataModule:
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg, trial_dir) -> None:
+        self.trial_dir = trial_dir
         self.cfg = parse_structured(ColmapDataModuleConfig, cfg)
-        self.resolution_scales = [1.0]
-        scene_info = readColmapSceneInfo(self.cfg.source_path, self.cfg.images, self.cfg.eval)
-        
+        scene_info = load_colmap_folder(self.cfg.source_path, self.cfg.eval)
+        input_ply_path = Path(self.trial_dir) / "input.ply"
+        camera_path = Path(self.trial_dir) /  "cameras.json"
         # Save point cloud data
-        with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.cfg.model_path, "input.ply") , 'wb') as dest_file:
+        with open(scene_info.ply_path, 'rb') as src_file, open(input_ply_path , 'wb') as dest_file:
             dest_file.write(src_file.read())
         
         # Save camera data
@@ -39,7 +40,7 @@ class ColmapDataModule:
             camlist.extend(scene_info.train_cameras)
         for id, cam in enumerate(camlist):
             json_cams.append(camera_to_JSON(id, cam))
-        with open(os.path.join(self.cfg.model_path, "cameras.json"), 'w') as file:
+        with open(camera_path, 'w') as file:
             json.dump(json_cams, file)
         
         # Shuffle the dataset
@@ -47,10 +48,9 @@ class ColmapDataModule:
             random.shuffle(scene_info.train_cameras)  # Multi-res consistent random shuffling
             random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
         
-        # TODO: ??What is this
-        self.cameras_extent = scene_info.nerf_normalization["radius"]
+        self.spatial_scale = scene_info.spatial_scale["radius"]
         self.train_cameras, self.test_cameras = {},{}
-        for resolution_scale in self.resolution_scales:
+        for resolution_scale in self.cfg.resolution_scales:
             print("Loading Training Cameras")
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, self.cfg)
             print("Loading Test Cameras")
