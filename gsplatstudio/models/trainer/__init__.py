@@ -1,3 +1,3 @@
 from . import (
-    gstrainer
+    gstrainer,
 )

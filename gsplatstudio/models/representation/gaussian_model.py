@@ -13,19 +13,22 @@ import torch
 import numpy as np
 from gsplatstudio.utils.general_utils import inverse_sigmoid
 from torch import nn
-import os
-from gsplatstudio.utils.system_utils import mkdir_p
 from plyfile import PlyData, PlyElement
 from gsplatstudio.utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from gsplatstudio.utils.graphics_utils import BasicPointCloud
 from gsplatstudio.utils.general_utils import build_covariance_from_scaling_rotation
+from gsplatstudio.utils.type_utils import *
+from gsplatstudio.utils.config import parse_structured
+
+@dataclass
+class GaussianModelConfig:
+    max_sh_degree: int = 3
 
 @gsplatstudio.register("gaussian-model")
-class GaussianModel(nn.Module):
+class GaussianModel:
     def __init__(self, cfg):
-        super(GaussianModel, self).__init__()
-        
+        self.cfg = parse_structured(GaussianModelConfig, cfg)
         self.sh_degree = 0
         self._xyz = torch.empty(0)
         self._features_dc = torch.empty(0)
@@ -33,7 +36,7 @@ class GaussianModel(nn.Module):
         self._scaling = torch.empty(0)
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
-        self.max_sh_degree = cfg.max_sh_degree
+        self.max_sh_degree = self.cfg.max_sh_degree
 
         self.spatial_lr_scale = 0
         self.scaling_activation = torch.exp

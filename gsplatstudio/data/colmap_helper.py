@@ -1,67 +1,24 @@
-import os
 import sys
 import struct
-import collections
 import numpy as np
-from PIL import Image as pImage
+from PIL import Image
 from plyfile import PlyData, PlyElement
-
+from pathlib import Path
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.graphics_utils import *
+from gsplatstudio.data.base_data import *
 
-class BasicPointCloud(NamedTuple):
-    points : np.array
-    colors : np.array
-    normals : np.array
 
-class SceneInfo(NamedTuple):
-    point_cloud: BasicPointCloud
-    train_cameras: list
-    test_cameras: list
-    nerf_normalization: dict
-    ply_path: str
-
-class CameraInfo(NamedTuple):
-    uid: int
-    R: np.array
-    T: np.array
-    FovY: np.array
-    FovX: np.array
-    image: np.array
-    image_path: str
-    image_name: str
-    width: int
-    height: int
-
-CameraModel = collections.namedtuple(
-    "CameraModel", ["model_id", "model_name", "num_params"])
-Camera = collections.namedtuple(
-    "Camera", ["id", "model", "width", "height", "params"])
-BaseImage = collections.namedtuple(
-    "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
-Point3D = collections.namedtuple(
-    "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"])
-CAMERA_MODELS = {
-    CameraModel(model_id=0, model_name="SIMPLE_PINHOLE", num_params=3),
-    CameraModel(model_id=1, model_name="PINHOLE", num_params=4),
-    CameraModel(model_id=2, model_name="SIMPLE_RADIAL", num_params=4),
-    CameraModel(model_id=3, model_name="RADIAL", num_params=5),
-    CameraModel(model_id=4, model_name="OPENCV", num_params=8),
-    CameraModel(model_id=5, model_name="OPENCV_FISHEYE", num_params=8),
-    CameraModel(model_id=6, model_name="FULL_OPENCV", num_params=12),
-    CameraModel(model_id=7, model_name="FOV", num_params=5),
-    CameraModel(model_id=8, model_name="SIMPLE_RADIAL_FISHEYE", num_params=4),
-    CameraModel(model_id=9, model_name="RADIAL_FISHEYE", num_params=5),
-    CameraModel(model_id=10, model_name="THIN_PRISM_FISHEYE", num_params=12)
-}
-CAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
-                         for camera_model in CAMERA_MODELS])
-CAMERA_MODEL_NAMES = dict([(camera_model.model_name, camera_model)
-                           for camera_model in CAMERA_MODELS])
-
-class Image(BaseImage):
-    def qvec2rotmat(self):
-        return qvec2rotmat(self.qvec)
+def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
+    """Read and unpack the next bytes from a binary file.
+    :param fid:
+    :param num_bytes: Sum of combination of {2, 4, 8}, e.g. 2, 6, 16, 30, etc.
+    :param format_char_sequence: List of {c, e, f, d, h, H, i, I, l, L, q, Q}.
+    :param endian_character: Any of {@, =, <, >, !}
+    :return: Tuple of read and unpacked values.
+    """
+    data = fid.read(num_bytes)
+    return struct.unpack(endian_character + format_char_sequence, data)
 
 def read_extrinsics_binary(path_to_model_file):
     """
@@ -91,8 +48,8 @@ def read_extrinsics_binary(path_to_model_file):
             xys = np.column_stack([tuple(map(float, x_y_id_s[0::3])),
                                    tuple(map(float, x_y_id_s[1::3]))])
             point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
-            images[image_id] = Image(
-                id=image_id, qvec=qvec, tvec=tvec,
+            images[image_id] = GImage(
+                uid=image_id, qvec=qvec, tvec=tvec,
                 camera_id=camera_id, name=image_name,
                 xys=xys, point3D_ids=point3D_ids)
     return images
@@ -111,13 +68,13 @@ def read_intrinsics_binary(path_to_model_file):
                 fid, num_bytes=24, format_char_sequence="iiQQ")
             camera_id = camera_properties[0]
             model_id = camera_properties[1]
-            model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
+            model_name = GCAMERA_MODEL_IDS[camera_properties[1]].model_name
             width = camera_properties[2]
             height = camera_properties[3]
-            num_params = CAMERA_MODEL_IDS[model_id].num_params
+            num_params = GCAMERA_MODEL_IDS[model_id].num_params
             params = read_next_bytes(fid, num_bytes=8*num_params,
                                      format_char_sequence="d"*num_params)
-            cameras[camera_id] = Camera(id=camera_id,
+            cameras[camera_id] = GCamera(uid=camera_id,
                                         model=model_name,
                                         width=width,
                                         height=height,
@@ -144,7 +101,7 @@ def read_intrinsics_text(path):
                 width = int(elems[2])
                 height = int(elems[3])
                 params = np.array(tuple(map(float, elems[4:])))
-                cameras[camera_id] = Camera(id=camera_id, model=model,
+                cameras[camera_id] = GCamera(uid=camera_id, model=model,
                                             width=width, height=height,
                                             params=params)
     return cameras
@@ -171,26 +128,13 @@ def read_extrinsics_text(path):
                 xys = np.column_stack([tuple(map(float, elems[0::3])),
                                        tuple(map(float, elems[1::3]))])
                 point3D_ids = np.array(tuple(map(int, elems[2::3])))
-                images[image_id] = Image(
-                    id=image_id, qvec=qvec, tvec=tvec,
+                images[image_id] = GImage(
+                    uid=image_id, qvec=qvec, tvec=tvec,
                     camera_id=camera_id, name=image_name,
                     xys=xys, point3D_ids=point3D_ids)
     return images
 
-def qvec2rotmat(qvec):
-    return np.array([
-        [1 - 2 * qvec[2]**2 - 2 * qvec[3]**2,
-         2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
-         2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2]],
-        [2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
-         1 - 2 * qvec[1]**2 - 2 * qvec[3]**2,
-         2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1]],
-        [2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
-         2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
-         1 - 2 * qvec[1]**2 - 2 * qvec[2]**2]])
-
-
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def read_colmap_cameras(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
@@ -200,31 +144,24 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         extr = cam_extrinsics[key]
         intr = cam_intrinsics[extr.camera_id]
-        height = intr.height
-        width = intr.width
-
-        uid = intr.id
-        R = np.transpose(qvec2rotmat(extr.qvec))
-        T = np.array(extr.tvec)
-
         if intr.model=="SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
-            FovY = focal2fov(focal_length_x, height)
-            FovX = focal2fov(focal_length_x, width)
+            FovY = focal2fov(focal_length_x, intr.height)
+            FovX = focal2fov(focal_length_x, intr.width)
         elif intr.model=="PINHOLE":
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
-            FovY = focal2fov(focal_length_y, height)
-            FovX = focal2fov(focal_length_x, width)
+            FovY = focal2fov(focal_length_y, intr.height)
+            FovX = focal2fov(focal_length_x, intr.width)
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
+        
+        image_path = Path(images_folder) / extr.name
+        image = Image.open(str(image_path))
 
-        image_path = os.path.join(images_folder, os.path.basename(extr.name))
-        image_name = os.path.basename(image_path).split(".")[0]
-        image = pImage.open(image_path)
 
-        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+        cam_info = GCameraInfo(uid=intr.uid, R=extr.R, T=extr.T, FovY=FovY, FovX=FovX, image=image,
+                              image_path=image_path, image_name=extr.name, width=intr.width, height=intr.height)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -242,7 +179,7 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
 
-def getNerfppNorm(cam_info):
+def get_spatial_scale(cam_info):
     def get_center_and_diag(cam_centers):
         cam_centers = np.hstack(cam_centers)
         avg_cam_center = np.mean(cam_centers, axis=1, keepdims=True)
@@ -264,17 +201,6 @@ def getNerfppNorm(cam_info):
     translate = -center
 
     return {"translate": translate, "radius": radius}
-
-def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
-    """Read and unpack the next bytes from a binary file.
-    :param fid:
-    :param num_bytes: Sum of combination of {2, 4, 8}, e.g. 2, 6, 16, 30, etc.
-    :param format_char_sequence: List of {c, e, f, d, h, H, i, I, l, L, q, Q}.
-    :param endian_character: Any of {@, =, <, >, !}
-    :return: Tuple of read and unpacked values.
-    """
-    data = fid.read(num_bytes)
-    return struct.unpack(endian_character + format_char_sequence, data)
 
 
 
@@ -376,20 +302,19 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8):
+def load_colmap_folder(path, eval, llffhold=8):
     try:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
-        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+        cameras_extrinsic_file = Path(path) / "sparse" / "0" / "images.bin"
+        cameras_intrinsic_file = Path(path) / "sparse" / "0" / "cameras.bin"
+        cam_extrinsics = read_extrinsics_binary(str(cameras_extrinsic_file))
+        cam_intrinsics = read_intrinsics_binary(str(cameras_intrinsic_file))
     except:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
-        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
-
-    reading_dir = "images" if images == None else images
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+        cameras_extrinsic_file = Path(path) / "sparse" / "0" / "images.txt"
+        cameras_intrinsic_file = Path(path) / "sparse" / "0" / "cameras.txt"
+        cam_extrinsics = read_extrinsics_text(str(cameras_extrinsic_file))
+        cam_intrinsics = read_intrinsics_text(str(cameras_intrinsic_file))
+    images_folder = Path(path) / "images"
+    cam_infos_unsorted = read_colmap_cameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=images_folder)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
     if eval:
@@ -399,12 +324,12 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         train_cam_infos = cam_infos
         test_cam_infos = []
 
-    nerf_normalization = getNerfppNorm(train_cam_infos)
+    spatial_scale = get_spatial_scale(train_cam_infos)
 
-    ply_path = os.path.join(path, "sparse/0/points3D.ply")
-    bin_path = os.path.join(path, "sparse/0/points3D.bin")
-    txt_path = os.path.join(path, "sparse/0/points3D.txt")
-    if not os.path.exists(ply_path):
+    ply_path = str(Path(path) / "sparse" / "0" / "points3D.ply")
+    bin_path = str(Path(path) / "sparse" / "0" / "points3D.bin")
+    txt_path = str(Path(path) / "sparse" / "0" / "points3D.txt")
+    if not Path(ply_path).exists():
         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
         try:
             xyz, rgb, _ = read_points3D_binary(bin_path)
@@ -416,9 +341,9 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     except:
         pcd = None
 
-    scene_info = SceneInfo(point_cloud=pcd,
+    scene_info = GDataset(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
-                           nerf_normalization=nerf_normalization,
+                           spatial_scale=spatial_scale,
                            ply_path=ply_path)
     return scene_info

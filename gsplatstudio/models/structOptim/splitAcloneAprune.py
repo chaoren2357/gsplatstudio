@@ -1,11 +1,26 @@
 import torch
 import gsplatstudio
 from gsplatstudio.utils.general_utils import build_rotation, inverse_sigmoid
+from gsplatstudio.utils.type_utils import *
+from gsplatstudio.utils.config import parse_structured
+
+@dataclass
+class splitAcloneApruneConfig:
+    max_sh_drgree: int = 3
+    percent_dense: float = 0.01
+    opacity_reset_interval: int = 3000
+    densify_from_iter: int = 500
+    densify_until_iter: int = 15000
+    densify_grad_threshold: float = 0.0002
+    densification_interval: int = 100
+    size_threshold: int = 20
+    min_opacity: float = 0.005
+    num_split: int = 2
 
 @gsplatstudio.register("split.clone.prune-structOptim")
 class splitAcloneAprune:
     def __init__(self, cfg):
-        self.cfg = cfg
+        self.cfg = parse_structured(splitAcloneApruneConfig, cfg)
 
     def init_optim(self,model, spatial_lr_scale):
         self.spatial_lr_scale = spatial_lr_scale

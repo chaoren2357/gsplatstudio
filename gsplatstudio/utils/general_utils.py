@@ -151,3 +151,17 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+
+def validate_type(value, valid_types):
+    """
+    Validates that the value is one of the specified types.
+
+    :param value: The value to validate.
+    :param valid_types: A list of types that value is allowed to be.
+    :raises TypeError: If value is not one of the valid types.
+    """
+    if not isinstance(value, valid_types):
+        valid_types_str = ', '.join([t.__name__ for t in valid_types])
+        raise TypeError(f"Must be one of types: {valid_types_str}, but got {type(value).__name__} instead.")
+

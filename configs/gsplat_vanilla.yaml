@@ -4,14 +4,19 @@ exp_root_dir: "outputs"
 seed: 0
 description: ""
 
-data_type: "colmap"
+data_type: "colmap-data"
 data: 
+  processor_type: "colmap-processor"
+  processor: 
+    use_gpu: True
+    skip_matching: False
+    camera: "OPENCV"
+    map_ba_global_function_tolerance: 0.000001
   source_path: '/mnt/d/data/GaussianData/carla_sample'
   eval: False
   data_device: 'cuda'
   resolution: -1
-  images: 'images'
-  model_path: ''
+  resolution_scales: [1.0]
   shuffle: True
 system_type: "vanilla-gsplat"
 system: 
@@ -22,7 +27,7 @@ system:
   trainer:
     detect_anomaly: False
     iterations: 30000
-    start_checkpoint: None
+    start_checkpoint: []
     save_iterations: [7000, 30000]
     test_iterations: [7000, 30000]
     ckpt_iterations: []
