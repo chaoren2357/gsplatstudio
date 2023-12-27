@@ -1,8 +1,8 @@
 import gsplatstudio 
+from gsplatstudio.utils.type_utils import *
+
 import json
 import random
-from gsplatstudio.utils.config import parse_structured
-from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 from gsplatstudio.data.colmap_helper import *
 
@@ -20,10 +20,16 @@ class ColmapDataModuleConfig:
 
 
 @gsplatstudio.register("colmap-data")
-class ColmapDataModule:
-    def __init__(self, cfg, trial_dir) -> None:
-        self.trial_dir = trial_dir
-        self.cfg = parse_structured(ColmapDataModuleConfig, cfg)
+class ColmapDataModule(BaseDataModule):
+    def __init__(self, cfg, logger, trial_dir) -> None:
+        super().__init__(cfg, logger, trial_dir)
+    
+    @property
+    def config_class(self):
+        return ColmapDataModuleConfig
+
+    def run(self):
+        super().run()
         scene_info = load_colmap_folder(self.cfg.source_path, self.cfg.eval)
         input_ply_path = Path(self.trial_dir) / "input.ply"
         camera_path = Path(self.trial_dir) /  "cameras.json"

@@ -1,7 +1,11 @@
+import gsplatstudio
 import collections
 import numpy as np
 from pathlib import Path
 from gsplatstudio.utils.graphics_utils import qvec2rotmat
+
+from abc import ABC, abstractmethod
+from gsplatstudio.utils.config import parse_structured
 
 class GCameraInfo:
     def __init__(self,uid: int,
@@ -105,3 +109,19 @@ CAMERA_MODELS = {
 
 GCAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
                          for camera_model in CAMERA_MODELS])
+
+class BaseDataModule(ABC):
+    def __init__(self, cfg, logger, trial_dir) -> None:
+        self.cfg = parse_structured(self.config_class, cfg)
+        self.logger = logger
+        self.trial_dir = trial_dir
+        self.data_processor = gsplatstudio.find(self.cfg.processor_type)(self.cfg.processor, self.logger, self.cfg.source_path)
+    
+    @property
+    @abstractmethod
+    def config_class(self):
+        pass
+
+    def run(self):
+        self.data_processor.run()
+        

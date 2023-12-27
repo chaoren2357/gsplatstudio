@@ -1,3 +1,4 @@
 from . import(
-    ColmapProcessor
+    base_processor,
+    colmap_processor
 )

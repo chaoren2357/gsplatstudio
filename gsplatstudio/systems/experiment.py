@@ -1,9 +1,9 @@
-import gsplatstudio
-import shutil
-import numpy as np
-import random
 import torch
+import shutil
+import random
+import numpy as np
 from pathlib import Path
+import gsplatstudio
 from gsplatstudio.utils.config import load_config, dump_config
 from gsplatstudio.utils.general_utils import copy_items
 from gsplatstudio.utils.logger import setup_logging, init_logger
@@ -11,25 +11,13 @@ from gsplatstudio.utils.logger import setup_logging, init_logger
 class Experiment:
     def __init__(self, config_path='configs/gsplat_vanilla.yaml'):
         self.cfg = load_config(config_path)
-
         self._init_seed(self.cfg.seed)
         self._prepare_experiment_folders(config_path)
         self.logger.info("Experiment folder: {}".format(self.cfg.trial_dir))
         
         self.logger.info("Loading components...")
-        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, Path(self.cfg.trial_dir) / 'results')
+        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, self.logger, Path(self.cfg.trial_dir) / 'results')
         self.system = gsplatstudio.find(self.cfg.system_type)(self.cfg.system)  
-        self.model = gsplatstudio.find(self.cfg.system.representation_type)(self.cfg.system.representation)
-        self.loss = gsplatstudio.find(self.cfg.system.loss_type)(self.cfg.system.loss)
-        self.trainer = gsplatstudio.find(self.cfg.system.trainer_type)(self.cfg.system.trainer)
-        self.paramOptim = gsplatstudio.find(self.cfg.system.paramOptim_type)(self.cfg.system.paramOptim)
-        self.structOptim = gsplatstudio.find(self.cfg.system.structOptim_type)(self.cfg.system.structOptim)
-        self.renderer = gsplatstudio.find(self.cfg.system.renderer_type)(self.cfg.system.renderer)
-        self.trainer.load(logger = self.logger, data = self.data, model = self.model, 
-                          loss = self.loss, renderer = self.renderer,
-                          paramOptim = self.paramOptim, structOptim = self.structOptim)
-        self.system.load(logger = self.logger, data = self.data, trainer = self.trainer)
-        
 
     def _prepare_experiment_folders(self,config_path):
         # Code duplicate
@@ -63,13 +51,9 @@ class Experiment:
         with open(view_dir / "cfg_args", 'w') as cfg_log_f:
             cfg_log_f.write(namespace_str)
 
-        # TODO:ckpts
-        # self.cfg.ckpt_dir = Path(self.cfg.trial_dir) / 'ckpts'
-
-
-
-        
-
+        # ckpts
+        ckpt_dir = Path(self.cfg.trial_dir) / 'ckpts'
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     def _init_seed(self,seed):
         random.seed(seed)
@@ -78,7 +62,7 @@ class Experiment:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-
     def run(self):
-        # self.trainer.train()
+        self.data.run()
+        self.system.load(self.data, self.logger)
         self.system.run()
