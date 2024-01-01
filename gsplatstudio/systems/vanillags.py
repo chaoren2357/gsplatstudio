@@ -1,13 +1,7 @@
 import gsplatstudio
+from gsplatstudio.systems.base_system import BaseSystem
 
 @gsplatstudio.register("vanilla-gsplat")
-class vanillaGS:
+class vanillaGS(BaseSystem):
     def __init__(self, cfg):
-        self.cfg = cfg
-
-    def run(self):
-        self.trainer.train()
-    def load(self, logger, data, trainer):
-        self.logger = logger
-        self.data = data
-        self.trainer = trainer
+        super().__init__(cfg)

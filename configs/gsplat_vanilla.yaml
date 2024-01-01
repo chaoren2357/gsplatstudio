@@ -6,13 +6,13 @@ description: ""
 
 data_type: "colmap-data"
 data: 
-  processor_type: "colmap-processor"
+  processor_type: "no-processor"
   processor: 
     use_gpu: True
     skip_matching: False
     camera: "OPENCV"
     map_ba_global_function_tolerance: 0.000001
-  source_path: '/mnt/d/data/GaussianData/carla_sample'
+  source_path: '/mnt/d/data/carla/processed/Ground'
   eval: False
   data_device: 'cuda'
   resolution: -1

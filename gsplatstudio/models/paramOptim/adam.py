@@ -22,7 +22,6 @@ class adamAcustomlr:
     def __init__(self, cfg):
         self.cfg = parse_structured(adamAcustomlrConfig, cfg)
         
-
     def init_optim(self,param_lr_group, spatial_lr_scale, max_iter):
         self.optimizer = torch.optim.Adam(param_lr_group, lr=0.0, eps=1e-15)
         self.xyz_lr_schedule = get_expon_lr_func(lr_init=self.cfg.position_lr_init*spatial_lr_scale,
