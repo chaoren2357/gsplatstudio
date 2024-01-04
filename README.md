@@ -2,8 +2,10 @@
 A framework for 3d gaussian splatting experiment
 
 ## TODO
-- [ ] Add system class
+- [x] Add system class
+- [ ] Add loss recorder
 - [ ] Add save and load for checkpoint
+- [ ] Add inference code
 - [ ] Write the usage in readme
 
 ## Acknowledgement

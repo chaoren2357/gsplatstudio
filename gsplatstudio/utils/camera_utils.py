@@ -62,6 +62,9 @@ class Camera(nn.Module):
         self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
+    def __repr__(self):
+        return f"Camera(uid={self.uid}, colmap_id={self.colmap_id}, R={self.R}, T={self.T}, FoVx={self.FoVx}, FoVy={self.FoVy}, image_name='{self.image_name}')"
+
 
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
@@ -141,3 +144,54 @@ def camera_to_JSON(id, camera : Camera):
         'fx' : fov2focal(camera.FovX, camera.width)
     }
     return camera_entry
+
+def transform_camera_from_carla_matrix_to_colmap_quaternion(camera_data):
+    x_carla,y_carla,z_carla,roll_carla,pitch_carla,yaw_carla = camera_data['x'],camera_data['y'],camera_data['z'],camera_data['roll'],camera_data['pitch'],camera_data['yaw']
+    x = y_carla
+    y = -z_carla
+    z = x_carla
+    roll = pitch_carla
+    pitch = yaw_carla
+    yaw = roll_carla
+    C2W_matrix = get_transform_matrix(x, y, z, pitch, roll, yaw)
+    W2C_matrix = np.linalg.inv(C2W_matrix)
+    W2C_quaternion = rotmat2qvec(W2C_matrix[:3, :3])
+    W2C_translation = W2C_matrix[:3, 3]
+    return W2C_quaternion, W2C_translation
+
+def get_transform_matrix(x, y, z, pitch, roll, yaw):
+    cy, sy = np.cos(np.radians(yaw)), np.sin(np.radians(yaw))
+    cr, sr = np.cos(np.radians(roll)), np.sin(np.radians(roll))
+    cp, sp = np.cos(np.radians(pitch)), np.sin(np.radians(pitch))
+    
+    transform = [
+        [ cy * cp,  cy * sp * sr - sy * cr,  cy * sp * cr + sy * sr,  x],
+        [ sy * cp,  sy * sp * sr + cy * cr,  sy * sp * cr - cy * sr,  y],
+        [-sp     ,  cp * sr,                 cp * cr,                 z],
+        [0., 0., 0., 1.]
+    ]
+    return transform
+
+def rotmat2qvec(R):
+    Rxx, Ryx, Rzx, Rxy, Ryy, Rzy, Rxz, Ryz, Rzz = R.flat
+    K = (
+        np.array(
+            [
+                [Rxx - Ryy - Rzz, 0, 0, 0],
+                [Ryx + Rxy, Ryy - Rxx - Rzz, 0, 0],
+                [Rzx + Rxz, Rzy + Ryz, Rzz - Rxx - Ryy, 0],
+                [Ryz - Rzy, Rzx - Rxz, Rxy - Ryx, Rxx + Ryy + Rzz],
+            ]
+        )
+        / 3.0
+    )
+    eigvals, eigvecs = np.linalg.eigh(K)
+    qvec = eigvecs[[3, 0, 1, 2], np.argmax(eigvals)]
+    if qvec[0] < 0:
+        qvec *= -1
+    return qvec
+
+def fov_to_focal_length(fov_degrees, width):
+    fov_radians = np.radians(fov_degrees)
+    focal_length = (width / 2) / np.tan(fov_radians / 2)
+    return focal_length

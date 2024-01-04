@@ -123,5 +123,8 @@ class BaseDataModule(ABC):
         pass
 
     def run(self):
-        self.data_processor.run()
+        if not self.data_processor.should_skip:
+            self.data_processor.run()
+        else:
+            self.logger.info("Skip preprocessing data...")
         

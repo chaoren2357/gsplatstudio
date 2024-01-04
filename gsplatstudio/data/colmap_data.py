@@ -11,7 +11,7 @@ from gsplatstudio.data.colmap_helper import *
 class ColmapDataModuleConfig:
     processor_type: str
     processor: str
-    source_path: str = '/mnt/d/data/GaussianData/carla_sample'
+    source_path: str
     eval: bool = False
     data_device: str = 'cuda'
     resolution: int = -1
