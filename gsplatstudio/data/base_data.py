@@ -124,7 +124,10 @@ class BaseDataModule(ABC):
 
     def run(self):
         if not self.data_processor.should_skip:
+            self.logger.info(f"Start running {self.cfg.processor_type}...")
             self.data_processor.run()
+            self.logger.info(f"End running {self.cfg.processor_type}...")
         else:
             self.logger.info("Skip preprocessing data...")
+        self.logger.info(f"Start preparing data...")
         

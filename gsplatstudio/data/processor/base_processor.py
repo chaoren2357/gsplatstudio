@@ -23,8 +23,6 @@ class BaseDataProcessor(ABC):
     def run(self):
         pass
 
-
-
     def run_command_with_realtime_output(self, cmd):
         """
         Run the specified command and output the results in real-time.
@@ -42,7 +40,7 @@ class BaseDataProcessor(ABC):
             if output == '' and process.poll() is not None:
                 break
             if output:
-                self.logger.debug(output.strip())  # Replace logger.info with print
+                self.logger.verbose(output.strip())  
 
         # Read any remaining error output
         stderr_output = process.stderr.read()

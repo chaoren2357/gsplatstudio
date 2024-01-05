@@ -21,11 +21,12 @@ class ColmapProcessor(BaseDataProcessor):
     def config_class(self):
         return ColmapProcessorConfig
     
+    
     @property
     def should_skip(self):
-        cameras_file = Path(self.source_path_str) / "distorted" / "sparse" / "0" / "cameras.bin"
-        images_file = Path(self.source_path_str) / "distorted" / "sparse" / "0" / "images.bin"
-        points3D_file = Path(self.source_path_str) / "distorted" / "sparse" / "0" / "points3D.bin"
+        cameras_file = Path(self.source_path_str) / "sparse" / "0" / "cameras.bin"
+        images_file = Path(self.source_path_str) / "sparse" / "0" / "images.bin"
+        points3D_file = Path(self.source_path_str) / "sparse" / "0" / "points3D.bin"
         return cameras_file.exists() and images_file.exists() and points3D_file.exists()
     
     def run(self):

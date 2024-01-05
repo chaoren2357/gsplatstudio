@@ -3,6 +3,7 @@ from pathlib import Path
 from random import randint
 import gsplatstudio
 from gsplatstudio.utils.progress_bar import ProgressBar
+
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.config import parse_structured
 
@@ -19,9 +20,11 @@ class GaussTrainerConfig:
 class GaussTrainer:
     def __init__(self, cfg) -> None:
         self.cfg = parse_structured(GaussTrainerConfig, cfg)
+        
 
-    def load(self, logger, data, model, loss, structOptim, paramOptim, renderer, checkpoint=None):
+    def load(self, logger, recorder, data, model, loss, structOptim, paramOptim, renderer, checkpoint=None):
         self.logger = logger
+        self.recorder = recorder
         self.data = data
         self.model = model
         self.loss = loss
@@ -44,6 +47,9 @@ class GaussTrainer:
         
         # init progress bar
         self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
+
+        
+        
 
     def train(self) -> None:
         
@@ -76,13 +82,16 @@ class GaussTrainer:
             loss.backward()
             # print(f"{iteration}, rotation step d, {self.model._rotation.grad}")
             with torch.no_grad():
+                
                 # Progress bar
                 ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
                 self.progress_bar.update(iteration, ema_loss_for_log=ema_loss_for_log)
+                self.recorder.snapshot("ema_loss_for_log", ema_loss_for_log)
+                self.recorder.snapshot("loss", loss.clone().detach().cpu().item())
 
                 # Log and save
                 if iteration in self.cfg.save_iterations:
-                    self.logger.info(f"\n[ITER {iteration}] Saving Gaussians")
+                    self.logger.info(f"[ITER {iteration}] Saving Gaussians")
                     self.save(iteration)
 
                 # Densification
@@ -90,7 +99,8 @@ class GaussTrainer:
                 
                 # Optimizer step
                 self.paramOptim.update_optim(iteration)
-                
+                # recorder step
+                self.recorder.update()
                 # Checkpoint saving step
                 # if iteration in self.cfg.ckpt_iterations:
                 #     self.logger.info(f"\n[ITER {iteration}] Saving Checkpoint")

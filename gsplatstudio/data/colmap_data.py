@@ -36,7 +36,6 @@ class ColmapDataModule(BaseDataModule):
         # Save point cloud data
         with open(scene_info.ply_path, 'rb') as src_file, open(input_ply_path , 'wb') as dest_file:
             dest_file.write(src_file.read())
-        
         # Save camera data
         json_cams = []
         camlist = []
@@ -48,12 +47,10 @@ class ColmapDataModule(BaseDataModule):
             json_cams.append(camera_to_JSON(id, cam))
         with open(camera_path, 'w') as file:
             json.dump(json_cams, file)
-        
         # Shuffle the dataset
         if self.cfg.shuffle:
             random.shuffle(scene_info.train_cameras)  # Multi-res consistent random shuffling
             random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
-        
         self.spatial_scale = scene_info.spatial_scale["radius"]
         self.train_cameras, self.test_cameras = {},{}
         for resolution_scale in self.cfg.resolution_scales:
