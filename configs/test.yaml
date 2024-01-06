@@ -1,18 +1,17 @@
 name: "gsplat_vanilla"
-tag: ""
+tag: "test"
 exp_root_dir: "outputs"
 seed: 0
-description: ""
+description: "test"
 
 data_type: "colmap-data"
 data: 
-  processor_type: "no-processor"
+  processor_type: "colmap-processor"
   processor: 
     use_gpu: True
-    skip_matching: False
     camera: "OPENCV"
     map_ba_global_function_tolerance: 0.000001
-  source_path: '/mnt/d/data/carla/processed/Ground'
+  source_path: '/mnt/d/data/carla/processed/Sky_test'
   eval: False
   data_device: 'cuda'
   resolution: -1
@@ -27,10 +26,9 @@ system:
   trainer:
     detect_anomaly: False
     iterations: 30000
-    start_checkpoint: []
     save_iterations: [7000, 30000]
     test_iterations: [7000, 30000]
-    ckpt_iterations: []
+    ckpt_iterations: [7000, 20000, 30000]
   paramOptim_type: "adam+customLR-paramOptim"
   paramOptim:
     position_lr_delay_mult: 0.01
@@ -65,10 +63,13 @@ system:
     scaling_modifier: 1.0
     prefiltered: False
     override_color: [-1,-1,-1]
-  
-checkpoint:
-  Nothing: ""
 
+checkpoint:
+  use: True
+  iteration: 7000
+  data_path: "/mnt/d/code/gsplatstudio/outputs/gsplat_vanilla/test@20240105-135544/results/"
+  system_path: "/mnt/d/code/gsplatstudio/outputs/gsplat_vanilla/test@20240105-135544/ckpts/"
+  
 logger:
   version: 1
   disable_existing_loggers: False
@@ -81,7 +82,7 @@ logger:
     console:
       class: "logging.StreamHandler"
       formatter: "simple"
-      level: "DEBUG"
+      level: "VERBOSE"
       stream: "ext://sys.stdout"
     info_file_handler:
       backupCount: 20
@@ -95,6 +96,6 @@ logger:
     handlers:
     - "console"
     - "info_file_handler"
-    level: "INFO"
+    level: "VERBOSE"
   
   

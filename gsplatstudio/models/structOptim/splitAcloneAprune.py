@@ -22,6 +22,20 @@ class splitAcloneAprune:
     def __init__(self, cfg):
         self.cfg = parse_structured(splitAcloneApruneConfig, cfg)
 
+    @property
+    def state(self):
+        return (
+            self.max_radii2D,
+            self.xyz_gradient_accum,
+            self.denom  
+        )
+    
+    def restore(self, state, spatial_lr_scale):
+        (self.max_radii2D,
+        self.xyz_gradient_accum,
+        self.denom) = state
+        self.spatial_lr_scale = spatial_lr_scale
+
     def init_optim(self,model, spatial_lr_scale):
         self.spatial_lr_scale = spatial_lr_scale
         self.reset_stats(model)      
@@ -39,7 +53,6 @@ class splitAcloneAprune:
             if iteration % self.cfg.opacity_reset_interval == 0 or (is_white_background and iteration == self.cfg.densify_from_iter):
                 self.reset_model_opacity(model, paramOptim)
     
-
     def should_start_limit_size(self,iteration):
         return iteration > self.cfg.opacity_reset_interval
 

@@ -10,10 +10,8 @@
 #
 
 import torch
-import sys
-from datetime import datetime
+import json
 import numpy as np
-import random
 import shutil
 
 def should_exclude(item_path, excluded_dirs, excluded_files):
@@ -29,6 +27,11 @@ def copy_items(src_path, dest_path, excluded_dirs, excluded_files):
             copy_items(item, new_dest, excluded_dirs, excluded_files)
         else:
             shutil.copyfile(item, new_dest)
+
+def load_json(json_file):
+    with open(json_file, 'r') as file:
+        return json.load(file)
+
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
@@ -128,40 +131,3 @@ def build_scaling_rotation(s, r):
 
     L = R @ L
     return L
-
-def safe_state(silent):
-    old_f = sys.stdout
-    class F:
-        def __init__(self, silent):
-            self.silent = silent
-
-        def write(self, x):
-            if not self.silent:
-                if x.endswith("\n"):
-                    old_f.write(x.replace("\n", " [{}]\n".format(str(datetime.now().strftime("%d/%m %H:%M:%S")))))
-                else:
-                    old_f.write(x)
-
-        def flush(self):
-            old_f.flush()
-
-    sys.stdout = F(silent)
-
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
-    torch.cuda.set_device(torch.device("cuda:0"))
-
-
-def validate_type(value, valid_types):
-    """
-    Validates that the value is one of the specified types.
-
-    :param value: The value to validate.
-    :param valid_types: A list of types that value is allowed to be.
-    :raises TypeError: If value is not one of the valid types.
-    """
-    if not isinstance(value, valid_types):
-        valid_types_str = ', '.join([t.__name__ for t in valid_types])
-        raise TypeError(f"Must be one of types: {valid_types_str}, but got {type(value).__name__} instead.")
-
