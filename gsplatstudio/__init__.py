@@ -4,7 +4,6 @@ def register(name):
     def decorator(cls):
         __modules__[name] = cls
         return cls
-
     return decorator
 
 def find(name):

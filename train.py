@@ -1,4 +1,4 @@
-from gsplatstudio.systems.experiment import Experiment
+from gsplatstudio.experiment import Experiment
 import argparse
 
 

@@ -21,16 +21,15 @@ class ColmapProcessor(BaseDataProcessor):
     def config_class(self):
         return ColmapProcessorConfig
     
-    
     @property
     def should_skip(self):
         cameras_file = Path(self.source_path_str) / "sparse" / "0" / "cameras.bin"
         images_file = Path(self.source_path_str) / "sparse" / "0" / "images.bin"
         points3D_file = Path(self.source_path_str) / "sparse" / "0" / "points3D.bin"
         return cameras_file.exists() and images_file.exists() and points3D_file.exists()
-    
+            
     def run(self):
-        self.logger.info("Start running ColmapProcessor...")
+        self.logger.info("Start data processor ColmapProcessor...")
         sparse_path = Path(self.source_path_str) / "distorted" / "sparse"
         sparse_path.mkdir(parents=True, exist_ok=True)
         
@@ -91,7 +90,7 @@ class ColmapProcessor(BaseDataProcessor):
             destination_file = destination_path / file.name
             source_file.rename(destination_file)
 
-        self.logger.info(f"Finish processing data, source path: {self.source_path_str}")
+        self.logger.info(f"Finish data processing, source path: {self.source_path_str}")
     
 
 

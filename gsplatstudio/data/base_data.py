@@ -111,10 +111,10 @@ GCAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
                          for camera_model in CAMERA_MODELS])
 
 class BaseDataModule(ABC):
-    def __init__(self, cfg, logger, trial_dir) -> None:
+    def __init__(self, cfg, logger, view_dir) -> None:
         self.cfg = parse_structured(self.config_class, cfg)
         self.logger = logger
-        self.trial_dir = trial_dir
+        self.view_dir = view_dir
         self.data_processor = gsplatstudio.find(self.cfg.processor_type)(self.cfg.processor, self.logger, self.cfg.source_path)
     
     @property
@@ -122,12 +122,13 @@ class BaseDataModule(ABC):
     def config_class(self):
         pass
 
+    @abstractmethod
+    def restore(self, data_path, iteration):
+        pass
+    
     def run(self):
         if not self.data_processor.should_skip:
-            self.logger.info(f"Start running {self.cfg.processor_type}...")
             self.data_processor.run()
-            self.logger.info(f"End running {self.cfg.processor_type}...")
         else:
             self.logger.info("Skip preprocessing data...")
         self.logger.info(f"Start preparing data...")
-        

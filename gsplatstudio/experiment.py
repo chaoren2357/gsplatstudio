@@ -16,8 +16,9 @@ class Experiment:
         self._prepare_experiment_folders(config_path)
         self.logger.info("Experiment folder: {}".format(self.cfg.trial_dir))
 
-        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, self.logger, Path(self.cfg.trial_dir) / 'results')
-        self.system = gsplatstudio.find(self.cfg.system_type)(self.cfg.system)  
+        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, self.logger, self.view_dir)
+        self.system = gsplatstudio.find(self.cfg.system_type)(self.cfg.system)
+        self.cfg_ckpt =  self.cfg.checkpoint
         self.logger.info("Finish experiment initialization...")
 
     def _prepare_experiment_folders(self,config_path):
@@ -40,17 +41,11 @@ class Experiment:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         setup_logging(self.cfg.logger, self.log_dir)
         self.logger =  init_logger(self.cfg.trial_name)
+        
         # render results
         self.view_dir = Path(self.cfg.trial_dir) / 'results'
         self.view_dir.mkdir(parents=True, exist_ok=True)
-        namespace_str = f"Namespace(data_device='{self.cfg.data.data_device}', \
-                          eval={self.cfg.data.eval}, images='images', \
-                          model_path='{str(self.view_dir)}', resolution={self.cfg.data.resolution}, \
-                          sh_degree={self.cfg.system.representation.max_sh_degree}, source_path='{self.cfg.data.source_path}', \
-                          white_background={self.cfg.system.renderer.background_color == [255,255,255]})"
-        with open(self.view_dir / "cfg_args", 'w') as cfg_log_f:
-            cfg_log_f.write(namespace_str)
-
+        
         # ckpts
         self.ckpt_dir = Path(self.cfg.trial_dir) / 'ckpts'
         self.ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -63,14 +58,14 @@ class Experiment:
         torch.backends.cudnn.benchmark = False
 
     def run(self):
-        self.logger.info("Start data initialization...")
-        self.data.run()
-        self.logger.info("End data initialization...")
+        self.logger.info("Start running experiment...")
+        if self.cfg_ckpt.use:
+            self.data.restore(self.cfg_ckpt.data_path, self.cfg_ckpt.iteration)
+            self.system.restore(self.data, self.logger, self.log_dir, self.ckpt_dir, self.cfg_ckpt.system_path, self.cfg_ckpt.iteration)
+            self.system.run()
+        else:
+            self.data.run()
+            self.system.load(self.data, self.logger, self.log_dir, self.ckpt_dir)
+            self.system.run()
+        self.logger.info("Finish running experiment...")
 
-        self.logger.info("Start system loading...")
-        self.system.load(self.data, self.logger, self.log_dir)
-        self.logger.info("End system loading...")
-
-        self.logger.info("Start system running...")
-        self.system.run()
-        self.logger.info("End system running...")
