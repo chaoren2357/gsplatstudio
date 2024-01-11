@@ -73,6 +73,18 @@ class GaussianModel:
     def covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.scaling, self._rotation, scaling_modifier)
 
+    @property
+    def state(self):
+        return (
+            self.sh_degree,
+            self._xyz,
+            self._features_dc,
+            self._features_rest,
+            self._scaling,
+            self._rotation,
+            self._opacity,
+        )
+
     def increment_sh_degree(self):
         if self.sh_degree < self.max_sh_degree:
             self.sh_degree += 1
@@ -205,4 +217,13 @@ class GaussianModel:
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
 
         self.sh_degree = self.max_sh_degree
-
+    
+    def restore(self, state, spatial_lr_scale):
+        (self.sh_degree,
+        self._xyz,
+        self._features_dc,
+        self._features_rest,
+        self._scaling,
+        self._rotation,
+        self._opacity) = state
+        self.spatial_lr_scale = spatial_lr_scale

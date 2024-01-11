@@ -1,31 +1,23 @@
-#
-# Copyright (C) 2023, Inria
-# GRAPHDECO research group, https://team.inria.fr/graphdeco
-# All rights reserved.
-#
-# This software is free for non-commercial, research and evaluation use 
-# under the terms of the LICENSE.md file.
-#
-# For inquiries contact  george.drettakis@inria.fr
-#
 import gsplatstudio
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
 from gsplatstudio.utils.type_utils import *
-from gsplatstudio.utils.config import parse_structured
-
+from gsplatstudio.models.loss.base_loss import BaseLoss
 @dataclass
 class l1AssimLossConfig:
     lambda_dssim: float = 0.2
 
 @gsplatstudio.register("l1+ssim-loss")
-class l1AssimLoss(nn.Module):
+class l1AssimLoss(BaseLoss):
     def __init__(self,cfg):
-        super(l1AssimLoss, self).__init__()
-        self.cfg = self.cfg = parse_structured(l1AssimLossConfig, cfg)
+        super(l1AssimLoss, self).__init__(cfg)
+
+    @property
+    def config_class(self):
+        return l1AssimLossConfig
+
     def forward(self,predict,gt):
         value = (1.0 - self.cfg.lambda_dssim) * l1_loss(predict,gt) + self.cfg.lambda_dssim * (1.0 - ssim(predict,gt))
         self.value = value

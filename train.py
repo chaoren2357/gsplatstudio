@@ -1,19 +1,10 @@
-#
-# Copyright (C) 2023, Inria
-# GRAPHDECO research group, https://team.inria.fr/graphdeco
-# All rights reserved.
-#
-# This software is free for non-commercial, research and evaluation use 
-# under the terms of the LICENSE.md file.
-#
-# For inquiries contact  george.drettakis@inria.fr
-#
-
-
-from gsplatstudio.systems.experiment import Experiment
+from gsplatstudio.experiment import Experiment
+import argparse
 
 
 if __name__ == "__main__":
-    e = Experiment()
+    parser = argparse.ArgumentParser(description="Run the training experiment.")
+    parser.add_argument('-c', '--config', default='configs/gsplat_vanilla.yaml', help='Path to the configuration file.')
+    e = Experiment(config_path = parser.parse_args().config)
     e.run()
     

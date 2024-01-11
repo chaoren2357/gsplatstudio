@@ -1,34 +1,37 @@
 import torch
-from pathlib import Path
 from random import randint
 import gsplatstudio
-from gsplatstudio.utils.progress_bar import ProgressBar
+from pathlib import Path
+from gsplatstudio.models.trainer.base_trainer import BaseTrainer
 from gsplatstudio.utils.type_utils import *
-from gsplatstudio.utils.config import parse_structured
+from gsplatstudio.utils.progress_bar import ProgressBar
 
 @dataclass
 class GaussTrainerConfig:
     detect_anomaly: bool = False
     iterations: int = 30000
-    start_checkpoint: list = field(default_factory=list)
     save_iterations: list = field(default_factory=list)
     test_iterations: list = field(default_factory=list)
     ckpt_iterations: list = field(default_factory=list)
 
 @gsplatstudio.register("gaussian-trainer")
-class GaussTrainer:
-    def __init__(self, cfg) -> None:
-        self.cfg = parse_structured(GaussTrainerConfig, cfg)
-
-    def load(self, logger, data, model, loss, structOptim, paramOptim, renderer, checkpoint=None):
-        self.logger = logger
-        self.data = data
-        self.model = model
-        self.loss = loss
-        self.structOptim = structOptim
-        self.paramOptim = paramOptim
-        self.renderer = renderer
-        self.checkpoint = checkpoint
+class GaussTrainer(BaseTrainer):
+    @property
+    def config_class(self):
+        return GaussTrainerConfig
+    @property    
+    def state(self):
+        return {
+            "data": self.data.spatial_scale,
+            "model": self.model.state,
+            "structOptim": self.structOptim.state,
+            "paramOptim": self.paramOptim.state,
+            "iteration": self.iteration
+        }
+    
+    def setup_components(self):
+        # init progress bar
+        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
 
         spatial_lr_scale = self.data.spatial_scale
         
@@ -41,22 +44,38 @@ class GaussTrainer:
         
         # init structOptim from model
         self.structOptim.init_optim(self.model, spatial_lr_scale)
-        
-        # init progress bar
-        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
+    
+    def restore_components(self, system_path, iteration):
+        ckpt_path = Path(system_path) / f"{iteration}.pth"
+        try:
+            ckpt_dict = torch.load(ckpt_path)
+            spatial_lr_scale = ckpt_dict["data"]
+            
+            pcd_path = Path(self.view_dir) / "point_cloud" / f"iteration_{iteration}" / "point_cloud.ply"
+            self.model.load_ply(str(pcd_path))
+            self.model.restore(state = ckpt_dict["model"], spatial_lr_scale = spatial_lr_scale)
+            
+            self.structOptim.restore(state = ckpt_dict["structOptim"], spatial_lr_scale = spatial_lr_scale)
+            
+            param_lr_group = self.model.create_param_lr_groups(self.paramOptim.cfg)
+            self.paramOptim.restore(state = ckpt_dict["paramOptim"], spatial_lr_scale = spatial_lr_scale, param_lr_group = param_lr_group, max_iter = self.cfg.iterations)
+            
+            self.first_iteration = ckpt_dict["iteration"] + 1
+            # init progress bar
+            self.progress_bar = ProgressBar(first_iter=self.first_iteration, total_iters=self.cfg.iterations)
+            
+        except Exception as e:
+            self.logger.warning(f"Cannot load {ckpt_path}! Error: {e} Train from scratch")
+            self.setup_components()
+
 
     def train(self) -> None:
-        
-        first_iter = 1
-        # TODO: Add checkpoint restore
-        # if self.cfg.checkpoint:
-        #     (model_params, first_iter) = torch.load(checkpoint)
-        #     self.model.restore(model_params, opt)
+
         ema_loss_for_log = 0.0
         viewpoint_stack = None
         is_white_background = self.renderer.background_color == [255,255,255]
         
-        for iteration in range(first_iter, self.cfg.iterations + 1):    
+        for iteration in range(self.first_iteration, self.cfg.iterations + 1):    
             self.paramOptim.update_lr(iteration)
             # Every 1000 its we increase the levels of SH up to a maximum degree
             if iteration % 1000 == 0:
@@ -74,32 +93,38 @@ class GaussTrainer:
             gt_image = viewpoint_cam.original_image.cuda()
             loss = self.loss(image, gt_image)
             loss.backward()
-            # print(f"{iteration}, rotation step d, {self.model._rotation.grad}")
+            self.iteration = iteration
+
             with torch.no_grad():
+                
                 # Progress bar
                 ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
                 self.progress_bar.update(iteration, ema_loss_for_log=ema_loss_for_log)
+                self.recorder.snapshot("ema_loss_for_log", ema_loss_for_log)
+                self.recorder.snapshot("loss", loss.clone().detach().cpu().item())
 
                 # Log and save
                 if iteration in self.cfg.save_iterations:
-                    self.logger.info(f"\n[ITER {iteration}] Saving Gaussians")
-                    self.save(iteration)
+                    self.save_scene(iteration)
 
                 # Densification
                 self.structOptim.update(iteration, self.model, self.paramOptim, render_pkg, is_white_background)
                 
                 # Optimizer step
                 self.paramOptim.update_optim(iteration)
-                
-                # Checkpoint saving step
-                # if iteration in self.cfg.ckpt_iterations:
-                #     self.logger.info(f"\n[ITER {iteration}] Saving Checkpoint")
-                #     torch.save((self.model.capture(), iteration), self.data.trial_dir + "/chkpnt" + str(iteration) + ".pth")
 
-    def save(self, iteration):
-        ply_path = Path(self.data.trial_dir) / f"point_cloud/iteration_{iteration}" / "point_cloud.ply"
-        ply_path.parent.mkdir(parents=True, exist_ok=True)
-        self.model.save_ply(ply_path)
+                # Recorder step
+                self.recorder.update()
+
+                # Checkpoint saving step
+                if iteration in self.cfg.ckpt_iterations:
+                    self.save_ckpt(iteration)
+
+        
+
+    
+
+
 
 
 

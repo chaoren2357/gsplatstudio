@@ -7,7 +7,7 @@ from pathlib import Path
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.graphics_utils import *
 from gsplatstudio.data.base_data import *
-
+from tqdm import tqdm
 
 def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
     """Read and unpack the next bytes from a binary file.
@@ -136,12 +136,8 @@ def read_extrinsics_text(path):
 
 def read_colmap_cameras(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
-    for idx, key in enumerate(cam_extrinsics):
-        sys.stdout.write('\r')
-        # the exact output you're looking for:
-        sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
-        sys.stdout.flush()
-
+    # for key, value in tqdm(cam_extrinsics.items(), desc="Reading camera"):
+    for key, value in cam_extrinsics.items():
         extr = cam_extrinsics[key]
         intr = cam_intrinsics[extr.camera_id]
         if intr.model=="SIMPLE_PINHOLE":
@@ -155,15 +151,13 @@ def read_colmap_cameras(cam_extrinsics, cam_intrinsics, images_folder):
             FovX = focal2fov(focal_length_x, intr.width)
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
-        
         image_path = Path(images_folder) / extr.name
         image = Image.open(str(image_path))
-
-
+        
         cam_info = GCameraInfo(uid=intr.uid, R=extr.R, T=extr.T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=extr.name, width=intr.width, height=intr.height)
         cam_infos.append(cam_info)
-    sys.stdout.write('\n')
+
     return cam_infos
 
 def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
@@ -316,14 +310,12 @@ def load_colmap_folder(path, eval, llffhold=8):
     images_folder = Path(path) / "images"
     cam_infos_unsorted = read_colmap_cameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=images_folder)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
-
     if eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
-
     spatial_scale = get_spatial_scale(train_cam_infos)
 
     ply_path = str(Path(path) / "sparse" / "0" / "points3D.ply")
@@ -340,7 +332,6 @@ def load_colmap_folder(path, eval, llffhold=8):
         pcd = fetchPly(ply_path)
     except:
         pcd = None
-
     scene_info = GDataset(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,

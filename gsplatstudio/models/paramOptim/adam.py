@@ -21,7 +21,21 @@ class adamAcustomlrConfig:
 class adamAcustomlr:
     def __init__(self, cfg):
         self.cfg = parse_structured(adamAcustomlrConfig, cfg)
-        
+    
+    @property
+    def state(self):
+        return self.optimizer.state_dict()
+    
+    def restore(self, state, spatial_lr_scale, param_lr_group, max_iter):
+        self.optimizer = torch.optim.Adam(param_lr_group, lr=0.0, eps=1e-15)
+        self.optimizer.load_state_dict(state)
+        self.spatial_lr_scale = spatial_lr_scale 
+        self.xyz_lr_schedule = get_expon_lr_func(lr_init=self.cfg.position_lr_init*spatial_lr_scale,
+                                                        lr_final=self.cfg.position_lr_final*spatial_lr_scale,
+                                                        lr_delay_mult=self.cfg.position_lr_delay_mult,
+                                                        max_steps=self.cfg.position_lr_max_steps)
+        self.max_iter = max_iter
+
     def init_optim(self,param_lr_group, spatial_lr_scale, max_iter):
         self.optimizer = torch.optim.Adam(param_lr_group, lr=0.0, eps=1e-15)
         self.xyz_lr_schedule = get_expon_lr_func(lr_init=self.cfg.position_lr_init*spatial_lr_scale,
