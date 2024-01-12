@@ -10,19 +10,25 @@ Prerequisite
 Clone repository
 -------------
 
+
 .. code-block:: console
+
    git clone https://github.com/chaoren2357/gsplatstudio.git
 
+
 or 
+
 .. code-block:: console
+
    git clone git@github.com:chaoren2357/gsplatstudio.git
 
 Setup
 --------------
 
 .. code-block:: console
-conda env create --file environment.yml
-conda activate gsplatstudio
+
+    conda env create --file environment.yml
+    conda activate gsplatstudio
 
 
 
