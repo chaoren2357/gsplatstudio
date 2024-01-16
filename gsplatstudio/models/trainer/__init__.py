@@ -1,4 +1,6 @@
 from . import (
     base_trainer,
-    gstrainer,
+    refine_camera_trainer,
+    vanilla_trainer,
+    skyeye_trainer
 )

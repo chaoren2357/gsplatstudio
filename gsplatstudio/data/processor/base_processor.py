@@ -1,8 +1,9 @@
-from abc import abstractmethod, ABC
 import subprocess
-from gsplatstudio.utils.config import parse_structured
+from abc import abstractmethod, ABC
+
 import gsplatstudio
 from gsplatstudio.utils.type_utils import *
+from gsplatstudio.utils.config import parse_structured
 
 class BaseDataProcessor(ABC):
     def __init__(self, cfg, logger, source_path) -> None:
@@ -16,12 +17,18 @@ class BaseDataProcessor(ABC):
         pass
 
     @property
+    @abstractmethod
     def should_skip(self):
         pass
-
+    
     @abstractmethod
-    def run(self):
+    def _run(self):
         pass
+
+    def run(self):
+        self.logger.info(f"Start running data-processor {self.__class__.__name__}...")
+        self._run()
+        self.logger.info(f"End running data-processor {self.__class__.__name__}...")
 
     def run_command_with_realtime_output(self, cmd):
         """
@@ -53,14 +60,12 @@ class BaseDataProcessor(ABC):
 
 @dataclass
 class NoDataProcessorConfig:
-    use_gpu: bool = True
-    camera: str = "OPENCV"
-    map_ba_global_function_tolerance: float = 0.000001
+    pass
 
 @gsplatstudio.register("no-processor")
 class NoDataProcessor(BaseDataProcessor):
     def __init__(self, cfg, logger, source_path) -> None:
-        super().__init__(cfg, logger, source_path)
+        self.logger = logger
     @property
     def config_class(self):
         return NoDataProcessorConfig
@@ -69,5 +74,5 @@ class NoDataProcessor(BaseDataProcessor):
     def should_skip(self):
         return True
     
-    def run(self):
+    def _run(self):
         pass

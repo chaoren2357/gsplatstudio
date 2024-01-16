@@ -1,34 +1,25 @@
-#
-# Copyright (C) 2023, Inria
-# GRAPHDECO research group, https://team.inria.fr/graphdeco
-# All rights reserved.
-#
-# This software is free for non-commercial, research and evaluation use 
-# under the terms of the LICENSE.md file.
-#
-# For inquiries contact  george.drettakis@inria.fr
-#
-import gsplatstudio
 import torch
 import numpy as np
-from gsplatstudio.utils.general_utils import inverse_sigmoid
 from torch import nn
 from plyfile import PlyData, PlyElement
 from gsplatstudio.utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from gsplatstudio.utils.graphics_utils import BasicPointCloud
-from gsplatstudio.utils.general_utils import build_covariance_from_scaling_rotation
+from gsplatstudio.utils.gaussian_utils import inverse_sigmoid, build_covariance_from_scaling_rotation
+import gsplatstudio
 from gsplatstudio.utils.type_utils import *
-from gsplatstudio.utils.config import parse_structured
+from gsplatstudio.models.representation.base_repr import BaseRepr
 
 @dataclass
-class GaussianModelConfig:
+class GaussianReprConfig:
     max_sh_degree: int = 3
+    device: str = "cuda"
 
-@gsplatstudio.register("gaussian-model")
-class GaussianModel:
-    def __init__(self, cfg):
-        self.cfg = parse_structured(GaussianModelConfig, cfg)
+@gsplatstudio.register("gaussian-representation")
+class GaussianRepr(BaseRepr):
+    def __init__(self, cfg, logger):
+        super().__init__(cfg, logger)
+
         self.sh_degree = 0
         self._xyz = torch.empty(0)
         self._features_dc = torch.empty(0)
@@ -37,7 +28,6 @@ class GaussianModel:
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
         self.max_sh_degree = self.cfg.max_sh_degree
-
         self.spatial_lr_scale = 0
         self.scaling_activation = torch.exp
         self.scaling_inverse_activation = torch.log
@@ -45,6 +35,10 @@ class GaussianModel:
         self.opacity_activation = torch.sigmoid
         self.inverse_opacity_activation = inverse_sigmoid
         self.rotation_activation = torch.nn.functional.normalize
+
+    @property
+    def config_class(self):
+        return GaussianReprConfig
 
     @property
     def scaling(self):
@@ -68,7 +62,6 @@ class GaussianModel:
     def opacity(self):
         return self.opacity_activation(self._opacity)
     
-    # TODO: Why scaling and _rotation
     @property
     def covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.scaling, self._rotation, scaling_modifier)
@@ -91,14 +84,14 @@ class GaussianModel:
 
     def init_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
         self.spatial_lr_scale = spatial_lr_scale
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
-        features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
+        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().to(self.cfg.device)
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().to(self.cfg.device))
+        features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().to(self.cfg.device)
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
-        print("Number of points at initialisation : ", fused_point_cloud.shape[0])
+        self.logger.info(f"Number of points at initialisation : {fused_point_cloud.shape[0]}", )
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().to(self.cfg.device)), 0.0000001)
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
@@ -218,7 +211,7 @@ class GaussianModel:
 
         self.sh_degree = self.max_sh_degree
     
-    def restore(self, state, spatial_lr_scale):
+    def _restore(self, state, spatial_lr_scale):
         (self.sh_degree,
         self._xyz,
         self._features_dc,

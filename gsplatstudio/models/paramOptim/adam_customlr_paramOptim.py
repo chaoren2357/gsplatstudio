@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
 import gsplatstudio
-from gsplatstudio.utils.general_utils import get_expon_lr_func
-from gsplatstudio.utils.config import parse_structured
+from gsplatstudio.utils.gaussian_utils import get_expon_lr_func
 from gsplatstudio.utils.type_utils import *
+from gsplatstudio.models.paramOptim.base_paramOptim import BaseParamOptim
+
 
 @dataclass
-class adamAcustomlrConfig:
+class AdamWithcustomlrParamOptimConfig:
     position_lr_delay_mult: float = 0.01
     position_lr_final: float = 1.6e-06
     position_lr_init:float =  0.00016
@@ -18,15 +19,17 @@ class adamAcustomlrConfig:
 
 
 @gsplatstudio.register("adam+customLR-paramOptim")
-class adamAcustomlr:
-    def __init__(self, cfg):
-        self.cfg = parse_structured(adamAcustomlrConfig, cfg)
+class AdamWithcustomlrParamOptim(BaseParamOptim):
+
+    @property
+    def config_class(self):
+        return AdamWithcustomlrParamOptimConfig
     
     @property
     def state(self):
         return self.optimizer.state_dict()
     
-    def restore(self, state, spatial_lr_scale, param_lr_group, max_iter):
+    def _restore(self, state, spatial_lr_scale, param_lr_group, max_iter):
         self.optimizer = torch.optim.Adam(param_lr_group, lr=0.0, eps=1e-15)
         self.optimizer.load_state_dict(state)
         self.spatial_lr_scale = spatial_lr_scale 
@@ -36,7 +39,7 @@ class adamAcustomlr:
                                                         max_steps=self.cfg.position_lr_max_steps)
         self.max_iter = max_iter
 
-    def init_optim(self,param_lr_group, spatial_lr_scale, max_iter):
+    def init_optim(self, param_lr_group, spatial_lr_scale, max_iter):
         self.optimizer = torch.optim.Adam(param_lr_group, lr=0.0, eps=1e-15)
         self.xyz_lr_schedule = get_expon_lr_func(lr_init=self.cfg.position_lr_init*spatial_lr_scale,
                                                 lr_final=self.cfg.position_lr_final*spatial_lr_scale,

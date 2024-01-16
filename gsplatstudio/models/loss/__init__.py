@@ -1,4 +1,4 @@
 from . import (
     base_loss,
-    l1AssimLoss
+    l1_ssim_loss
 )

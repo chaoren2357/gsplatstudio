@@ -1,12 +1,10 @@
 from abc import abstractmethod, ABC
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.config import parse_structured
-import torch.nn as nn
 
 
-class BaseLoss(nn.Module, ABC):
+class BaseRenderer(ABC):
     def __init__(self, cfg, logger) -> None:
-        super(BaseLoss, self).__init__()
         self.cfg = parse_structured(self.config_class, cfg)
         self.logger = logger
 
@@ -16,8 +14,5 @@ class BaseLoss(nn.Module, ABC):
         pass
 
     @abstractmethod
-    def forward(self, predict,gt):
+    def render(self, model, camera):
         pass
-
-
-    

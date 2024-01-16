@@ -5,8 +5,9 @@ from gsplatstudio.utils.config import parse_structured
 
 
 class BaseTrainer(ABC):
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg, logger) -> None:
         self.cfg = parse_structured(self.config_class, cfg)
+        self.logger = logger
         self.first_iteration = 1
         self.iteration = 0
     
@@ -28,8 +29,7 @@ class BaseTrainer(ABC):
     def restore_components(self,system_path):
         pass
 
-    def initialize_components(self, logger, recorder, data, model, loss, structOptim, paramOptim, renderer):
-        self.logger = logger
+    def init_components(self, recorder, data, model, loss, structOptim, paramOptim, renderer, dirs, **kwargs):
         self.recorder = recorder
         self.data = data
         self.model = model
@@ -37,6 +37,11 @@ class BaseTrainer(ABC):
         self.structOptim = structOptim
         self.paramOptim = paramOptim
         self.renderer = renderer
+        for key, value in dirs.items():
+            setattr(self, key, value)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
 
     @abstractmethod
     def train(self):

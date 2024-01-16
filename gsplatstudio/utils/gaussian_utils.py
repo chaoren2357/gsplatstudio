@@ -1,48 +1,8 @@
-#
-# Copyright (C) 2023, Inria
-# GRAPHDECO research group, https://team.inria.fr/graphdeco
-# All rights reserved.
-#
-# This software is free for non-commercial, research and evaluation use 
-# under the terms of the LICENSE.md file.
-#
-# For inquiries contact  george.drettakis@inria.fr
-#
-
 import torch
-import json
 import numpy as np
-import shutil
-
-def should_exclude(item_path, excluded_dirs, excluded_files):
-    return item_path.name in excluded_dirs or item_path.name in excluded_files or item_path.name.startswith('.')
-
-def copy_items(src_path, dest_path, excluded_dirs, excluded_files):
-    for item in src_path.iterdir():
-        if should_exclude(item, excluded_dirs, excluded_files):
-            continue
-        new_dest = dest_path / item.name
-        if item.is_dir():
-            new_dest.mkdir(exist_ok=True)
-            copy_items(item, new_dest, excluded_dirs, excluded_files)
-        else:
-            shutil.copyfile(item, new_dest)
-
-def load_json(json_file):
-    with open(json_file, 'r') as file:
-        return json.load(file)
-
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
-
-def PILtoTorch(pil_image, resolution):
-    resized_image_PIL = pil_image.resize(resolution)
-    resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
-    if len(resized_image.shape) == 3:
-        return resized_image.permute(2, 0, 1)
-    else:
-        return resized_image.unsqueeze(dim=-1).permute(2, 0, 1)
 
 def get_expon_lr_func(
     lr_init, lr_final, lr_delay_steps=0, lr_delay_mult=1.0, max_steps=1000000
@@ -121,6 +81,7 @@ def build_covariance_from_scaling_rotation(scaling, rotation, scaling_modifier=1
     actual_covariance = L @ L.transpose(1, 2)
     symm = strip_symmetric(actual_covariance)
     return symm
+
 def build_scaling_rotation(s, r):
     L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")
     R = build_rotation(r)

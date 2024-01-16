@@ -18,76 +18,70 @@ class BaseSystemConfig:
     loss: str
     renderer_type: str
     renderer: str
+    recorder: str
 
 class BaseSystem(ABC):
-    def __init__(self, cfg):
+
+    def __init__(self, cfg, logger):
         self.cfg = parse_structured(self.config_class, cfg)
-        self.model = gsplatstudio.find(self.cfg.representation_type)(self.cfg.representation)
-        self.loss = gsplatstudio.find(self.cfg.loss_type)(self.cfg.loss)
-        self.trainer = gsplatstudio.find(self.cfg.trainer_type)(self.cfg.trainer)
-        self.paramOptim = gsplatstudio.find(self.cfg.paramOptim_type)(self.cfg.paramOptim)
-        self.structOptim = gsplatstudio.find(self.cfg.structOptim_type)(self.cfg.structOptim)
-        self.renderer = gsplatstudio.find(self.cfg.renderer_type)(self.cfg.renderer)
-        
-    @property
-    def config_class(self):
-        return BaseSystemConfig
+        self.logger = logger
+        self.model = gsplatstudio.find(self.cfg.representation_type)(self.cfg.representation, self.logger)
+        self.loss = gsplatstudio.find(self.cfg.loss_type)(self.cfg.loss, self.logger)
+        self.trainer = gsplatstudio.find(self.cfg.trainer_type)(self.cfg.trainer, self.logger)
+        self.paramOptim = gsplatstudio.find(self.cfg.paramOptim_type)(self.cfg.paramOptim, self.logger)
+        self.structOptim = gsplatstudio.find(self.cfg.structOptim_type)(self.cfg.structOptim, self.logger)
+        self.renderer = gsplatstudio.find(self.cfg.renderer_type)(self.cfg.renderer, self.logger)
+        self.recorder = Recorder(self.cfg.recorder)
     
     @property
     @abstractmethod
-    def record_cfgs_raw(self):
-        return {}
+    def config_class(self):
+        return BaseSystemConfig
     
-    def get_record_cfgs(self, log_dir):
-        record_cfgs = []
-        for cfg in self.record_cfgs_raw:
-            cfg.update({"filepath": log_dir})
-            record_cfgs.append(cfg)
-        return record_cfgs
-    
-    def restore(self, data, logger, log_dir, ckpt_dir, system_path, iteration):
-        self.logger = logger
-        self.logger.info(f"Start restoring system from {system_path} of iteration {iteration}... ")
-        
-        # init recorder
-        self.recorder = Recorder(self.get_record_cfgs(log_dir))
-        self.trainer.set("ckpt_dir", ckpt_dir)
-        self.trainer.set("view_dir", data.view_dir)
-        self.trainer.initialize_components(logger = logger, recorder = self.recorder, 
+    def _restore(self, data, system_path, iteration, dirs):
+        self.recorder.init_components(log_dir = dirs["log_dir"], max_iter = self.trainer.cfg.iterations)
+        self.trainer.init_components(
+                    recorder = self.recorder, 
                     data = data, model = self.model, 
                     loss = self.loss, renderer = self.renderer,
-                    paramOptim = self.paramOptim, structOptim = self.structOptim)
-
+                    paramOptim = self.paramOptim, structOptim = self.structOptim,
+                    dirs = dirs)
         self.trainer.restore_components(system_path, iteration)
-        self.logger.info("End restoring system ... ")
-        
-    def load(self, data, logger, log_dir, ckpt_dir):
-        self.logger = logger
-        self.logger.info("Start loading system ... ")
-        
-        # init recorder
-        self.recorder = Recorder(self.get_record_cfgs(log_dir))
-        self.trainer.set("ckpt_dir", ckpt_dir)
-        self.trainer.set("view_dir", data.view_dir)
-        self.trainer.initialize_components(logger = logger, recorder = self.recorder, 
-                          data = data, model = self.model, 
-                          loss = self.loss, renderer = self.renderer,
-                          paramOptim = self.paramOptim, structOptim = self.structOptim)
-        self.trainer.setup_components()
 
-        
+    def _load(self, data, dirs):
+        self.recorder.init_components(log_dir = dirs["log_dir"], max_iter = self.trainer.cfg.iterations)
+        self.trainer.init_components(
+                    recorder = self.recorder, 
+                    data = data, model = self.model, 
+                    loss = self.loss, renderer = self.renderer,
+                    paramOptim = self.paramOptim, structOptim = self.structOptim,
+                    dirs = dirs)
+        self.trainer.setup_components()
         # Save cfg_args
-        namespace_str = f"Namespace(data_device='{data.data_device}', \
-                                eval={data.eval}, images='images', \
-                                model_path='{str(data.view_dir)}', resolution={data.resolution}, \
-                                sh_degree={self.cfg.representation.max_sh_degree}, source_path='{data.source_path}', \
+        namespace_str = f"Namespace(data_device='{data.cfg.device}', \
+                                eval={data.cfg.eval}, images='images', \
+                                model_path='{str(data.view_dir)}', resolution={data.cfg.resolution}, \
+                                sh_degree={self.cfg.representation.max_sh_degree}, source_path='{data.cfg.source_path}', \
                                 white_background={self.cfg.renderer.background_color == [255,255,255]})"
         with open(data.view_dir / "cfg_args", 'w') as cfg_log_f:
             cfg_log_f.write(namespace_str)
 
-        self.logger.info("End loading system ... ")
+    def _run(self):
+        self.trainer.train()
+        
+    def restore(self, data, system_path, iteration, dirs):
+        assert "ckpt_dir" in dirs and "view_dir" in dirs and "log_dir" in dirs
+        self.logger.info(f"Start restoring {self.__class__.__name__} from {system_path} of iteration {iteration}... ")
+        self._restore(data, system_path, iteration, dirs)
+        self.logger.info(f"End restoring {self.__class__.__name__} ... ")
+    
+    def load(self, data, dirs):
+        assert "ckpt_dir" in dirs and "view_dir" in dirs and "log_dir" in dirs
+        self.logger.info(f"Start loading {self.__class__.__name__} ... ")
+        self._load(data, dirs)
+        self.logger.info(f"End loading {self.__class__.__name__} ... ")
     
     def run(self):
-        self.logger.info("Start running system ... ")
-        self.trainer.train()
-        self.logger.info("End running system ... ")
+        self.logger.info(f"Start running {self.__class__.__name__} ... ")
+        self._run()
+        self.logger.info(f"End running {self.__class__.__name__} ... ")

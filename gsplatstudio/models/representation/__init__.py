@@ -1,3 +1,4 @@
 from . import (
-    gaussian_model
+    base_repr, 
+    gaussian_repr
 )

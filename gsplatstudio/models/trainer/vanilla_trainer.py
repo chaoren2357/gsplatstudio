@@ -14,8 +14,8 @@ class GaussTrainerConfig:
     test_iterations: list = field(default_factory=list)
     ckpt_iterations: list = field(default_factory=list)
 
-@gsplatstudio.register("gaussian-trainer")
-class GaussTrainer(BaseTrainer):
+@gsplatstudio.register("vanilla-trainer")
+class VanillaTrainer(BaseTrainer):
     @property
     def config_class(self):
         return GaussTrainerConfig
@@ -30,13 +30,11 @@ class GaussTrainer(BaseTrainer):
         }
     
     def setup_components(self):
-        # init progress bar
-        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
 
         spatial_lr_scale = self.data.spatial_scale
         
         # init model from data
-        self.model.init_from_pcd(self.data.scene_info.point_cloud, spatial_lr_scale)
+        self.model.init_from_pcd(self.data.point_cloud, spatial_lr_scale)
         
         # init paramOptim from model
         param_lr_group = self.model.create_param_lr_groups(self.paramOptim.cfg)
@@ -44,6 +42,9 @@ class GaussTrainer(BaseTrainer):
         
         # init structOptim from model
         self.structOptim.init_optim(self.model, spatial_lr_scale)
+
+        # init progress bar
+        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
     
     def restore_components(self, system_path, iteration):
         ckpt_path = Path(system_path) / f"{iteration}.pth"
@@ -68,7 +69,6 @@ class GaussTrainer(BaseTrainer):
             self.logger.warning(f"Cannot load {ckpt_path}! Error: {e} Train from scratch")
             self.setup_components()
 
-
     def train(self) -> None:
 
         ema_loss_for_log = 0.0
@@ -83,21 +83,20 @@ class GaussTrainer(BaseTrainer):
 
             # Pick a random Camera
             if not viewpoint_stack:
-                viewpoint_stack = self.data.getTrainCameras().copy()
-            viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+                viewpoint_stack = self.data.get_train_pair_list().copy()
+            viewpoint_pair = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+
             # Render
-            render_pkg = self.renderer.render(model = self.model, camera = viewpoint_cam)
-            image = render_pkg["render"]
+            render_pkg = self.renderer.render(model = self.model, camera = viewpoint_pair.camera)
 
             # Loss
-            gt_image = viewpoint_cam.original_image.cuda()
-            loss = self.loss(image, gt_image)
+            gt_image = viewpoint_pair.image.get_resolution_data_from_path(self.data.cfg.resolution, self.data.cfg.resolution_scales[0])
+            loss = self.loss(render_pkg["render"], gt_image)
             loss.backward()
             self.iteration = iteration
 
             with torch.no_grad():
                 
-                # Progress bar
                 ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
                 self.progress_bar.update(iteration, ema_loss_for_log=ema_loss_for_log)
                 self.recorder.snapshot("ema_loss_for_log", ema_loss_for_log)
@@ -108,13 +107,13 @@ class GaussTrainer(BaseTrainer):
                     self.save_scene(iteration)
 
                 # Densification
-                self.structOptim.update(iteration, self.model, self.paramOptim, render_pkg, is_white_background)
+                self.structOptim.update_optim(iteration, self.model, self.paramOptim, render_pkg, is_white_background)
                 
                 # Optimizer step
                 self.paramOptim.update_optim(iteration)
 
                 # Recorder step
-                self.recorder.update()
+                self.recorder.update(iteration)
 
                 # Checkpoint saving step
                 if iteration in self.cfg.ckpt_iterations:

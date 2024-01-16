@@ -2,10 +2,12 @@
 import gsplatstudio
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.data.processor.base_processor import BaseDataProcessor
-from pathlib import Path
-from gsplatstudio.utils.general_utils import load_json
-from gsplatstudio.utils.camera_utils import transform_camera_from_carla_matrix_to_colmap_quaternion, fov_to_focal_length
+from gsplatstudio.utils.system_utils import load_json
+from gsplatstudio.utils.camera_utils import transform_camera_from_carla_matrix_to_colmap_W2C_quaternion, transform_camera_from_matrixcity_matrix_to_colmap_W2C_quaternion
+from gsplatstudio.utils.graphics_utils import fov2focal
 import sqlite3
+from pathlib import Path
+import numpy as np
 
 
 @dataclass
@@ -30,8 +32,7 @@ class ColmapWithCamProcessor(BaseDataProcessor):
         points3D_file = Path(self.source_path_str) / "sparse" / "0" / "points3D.bin"
         return cameras_file.exists() and images_file.exists() and points3D_file.exists()
     
-    def run(self):
-        self.logger.info("Start running ColmapWithCamProcessorConfig...")
+    def _run(self):
         project_folder = Path(self.source_path_str) / "distorted"
         project_folder.mkdir(parents=True, exist_ok=True)
         database_path = Path(self.source_path_str) / "distorted" / "database.db"
@@ -65,7 +66,8 @@ class ColmapWithCamProcessor(BaseDataProcessor):
         for camera_file in camera_folder.glob('*.json'):
             camera_data = load_json(camera_file)
             intrinsics = camera_data['intrinsics']
-            focal_length = fov_to_focal_length(intrinsics['fov'], intrinsics['width'])
+            fov_radians = np.radians(intrinsics['fov'])
+            focal_length = fov2focal(fov_radians, intrinsics['width'])
             key = (intrinsics['width'], intrinsics['height'], focal_length)
             if key not in unique_cameras:
                 unique_cameras[key] = camera_id
@@ -77,16 +79,16 @@ class ColmapWithCamProcessor(BaseDataProcessor):
         ## Create images.txt
         images_txt_path = project_folder / 'images.txt'
         open(str(images_txt_path), 'w').close()
-        image_files_with_id = [(int(image_file.stem.split('_')[2]), image_file) for image_file in image_distorted_folder.glob('*.png')]
+        image_files_with_id = [(int(image_file.stem.split('_')[1]), image_file) for image_file in image_distorted_folder.glob('*.png')]
         sorted_image_files = sorted(image_files_with_id, key=lambda x: x[0])
         with open(str(images_txt_path), 'w') as file:
             for _ , image_file in sorted_image_files:
                 image_name = image_file.stem
-                image_id = image_name.split('_')[2]
+                image_id = image_name.split('_')[1]
                 camera_name = image_name[:-5] + "camera"
                 camera_path = str(camera_folder / camera_name) + ".json"
                 camera_data = load_json(camera_path)
-                quat,trans = transform_camera_from_carla_matrix_to_colmap_quaternion(camera_data)
+                quat,trans = transform_camera_from_matrixcity_matrix_to_colmap_W2C_quaternion(camera_data)
                 file.write(f"{int(image_id)} {' '.join(map(str, quat))} {' '.join(map(str, trans))} 1 {image_file.name}\n")
                 file.write("\n")
 
@@ -95,11 +97,11 @@ class ColmapWithCamProcessor(BaseDataProcessor):
         cursor = conn.cursor()
         for image_file in image_distorted_folder.glob('*.png'):
             image_name = image_file.stem
-            image_id = image_name.split('_')[2]
+            image_id = image_name.split('_')[1]
             camera_name = image_name[:-5] + "camera"
             camera_path = str(camera_folder / camera_name) + ".json"
             camera_data = load_json(camera_path)
-            quat,trans = transform_camera_from_carla_matrix_to_colmap_quaternion(camera_data)
+            quat,trans = transform_camera_from_matrixcity_matrix_to_colmap_W2C_quaternion(camera_data)
             cursor.execute("""
                 UPDATE images
                 SET prior_qw = ?, prior_qx = ?, prior_qy = ?, prior_qz = ?, prior_tx = ?, prior_ty = ?, prior_tz = ?
@@ -154,7 +156,6 @@ class ColmapWithCamProcessor(BaseDataProcessor):
             self.logger.error(f"Image undistortion failed with code {exit_code}. Exiting.")
             exit(exit_code)
         self.logger.info("Finish image undistorter...")
-        self.logger.info(f"Finish processing data, source path: {self.source_path_str}")
     
 
 

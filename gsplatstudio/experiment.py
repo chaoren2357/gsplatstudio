@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import gsplatstudio
 from gsplatstudio.utils.config import load_config, dump_config
-from gsplatstudio.utils.general_utils import copy_items
+from gsplatstudio.utils.system_utils import copy_items
 from gsplatstudio.utils.logger import setup_logging, init_logger
 
 class Experiment:
@@ -16,8 +16,8 @@ class Experiment:
         self._prepare_experiment_folders(config_path)
         self.logger.info("Experiment folder: {}".format(self.cfg.trial_dir))
 
-        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, self.logger, self.view_dir)
-        self.system = gsplatstudio.find(self.cfg.system_type)(self.cfg.system)
+        self.data = gsplatstudio.find(self.cfg.data_type)(self.cfg.data, self.logger, {"view_dir": self.view_dir})
+        self.system = gsplatstudio.find(self.cfg.system_type)(self.cfg.system, self.logger)
         self.cfg_ckpt =  self.cfg.checkpoint
         self.logger.info("Finish experiment initialization...")
 
@@ -61,11 +61,21 @@ class Experiment:
         self.logger.info("Start running experiment...")
         if self.cfg_ckpt.use:
             self.data.restore(self.cfg_ckpt.data_path, self.cfg_ckpt.iteration)
-            self.system.restore(self.data, self.logger, self.log_dir, self.ckpt_dir, self.cfg_ckpt.system_path, self.cfg_ckpt.iteration)
+            self.system.restore(self.data, self.cfg_ckpt.system_path, self.cfg_ckpt.iteration, 
+                                dirs = {
+                                            "log_dir":self.log_dir, 
+                                            "ckpt_dir": self.ckpt_dir, 
+                                            "view_dir": self.data.view_dir
+                                        })
             self.system.run()
         else:
             self.data.run()
-            self.system.load(self.data, self.logger, self.log_dir, self.ckpt_dir)
+            self.system.load(self.data,
+                             dirs = {
+                                        "log_dir":self.log_dir, 
+                                        "ckpt_dir": self.ckpt_dir, 
+                                        "view_dir": self.data.view_dir
+                                    })
             self.system.run()
         self.logger.info("Finish running experiment...")
 

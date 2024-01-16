@@ -1,12 +1,14 @@
 # GsplatStudio
 A framework for 3d gaussian splatting experiment
+# Structure Design
+![](assets/structure.png)
 
 ## TODO
 - [x] Add system class
 - [x] Add loss recorder
 - [x] Add save and load for checkpoint
 - [ ] Add inference code
-- [ ] Write the usage in readme
+- [ ] Fill the docs
 
 ## Acknowledgement
 This code base is built upon the following awesome open-source projects:

@@ -1,4 +1,6 @@
-import sys
+import collections
+import numpy as np
+from pathlib import Path
 import struct
 import numpy as np
 from PIL import Image
@@ -6,8 +8,72 @@ from plyfile import PlyData, PlyElement
 from pathlib import Path
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.utils.graphics_utils import *
-from gsplatstudio.data.base_data import *
+from gsplatstudio.utils.camera_utils import *
+
+from concurrent.futures import ThreadPoolExecutor
+from gsplatstudio.utils.graphics_utils import qvec2rotmat
+from gsplatstudio.utils.graphics_utils import BasicPointCloud
+
 from tqdm import tqdm
+
+GCameraModel = collections.namedtuple(
+    "CameraModel", ["model_id", "model_name", "num_params"])
+
+CAMERA_MODELS = {
+    GCameraModel(model_id=0, model_name="SIMPLE_PINHOLE", num_params=3),
+    GCameraModel(model_id=1, model_name="PINHOLE", num_params=4),
+    GCameraModel(model_id=2, model_name="SIMPLE_RADIAL", num_params=4),
+    GCameraModel(model_id=3, model_name="RADIAL", num_params=5),
+    GCameraModel(model_id=4, model_name="OPENCV", num_params=8),
+    GCameraModel(model_id=5, model_name="OPENCV_FISHEYE", num_params=8),
+    GCameraModel(model_id=6, model_name="FULL_OPENCV", num_params=12),
+    GCameraModel(model_id=7, model_name="FOV", num_params=5),
+    GCameraModel(model_id=8, model_name="SIMPLE_RADIAL_FISHEYE", num_params=4),
+    GCameraModel(model_id=9, model_name="RADIAL_FISHEYE", num_params=5),
+    GCameraModel(model_id=10, model_name="THIN_PRISM_FISHEYE", num_params=12)
+}
+
+GCAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
+                         for camera_model in CAMERA_MODELS])
+
+
+
+class ColmapCamera:
+    def __init__(self, uid: int,
+                       model: str, 
+                       width: int, 
+                       height: int, 
+                       params: np.array):
+        self.uid = uid
+        self.model = model
+        self.params = params
+        self.width = width
+        self.height = height
+    
+class ColmapImage:
+    def __init__(self,uid: int,
+                    qvec: np.array,
+                    tvec: np.array,
+                    xys: np.array,
+                    point3D_ids: np.array,
+                    camera_id: int,
+                    name: str):
+        self.uid = uid
+        self.camera_id = camera_id
+        self.name = name
+        self.qvec = qvec
+        self.tvec = tvec
+        self.point3D_ids = point3D_ids
+        self.xys = xys
+
+    @property
+    def R(self):
+        return np.transpose(qvec2rotmat(self.qvec))
+    @property
+    def T(self):
+        return np.array(self.tvec)
+
+
 
 def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
     """Read and unpack the next bytes from a binary file.
@@ -48,7 +114,7 @@ def read_extrinsics_binary(path_to_model_file):
             xys = np.column_stack([tuple(map(float, x_y_id_s[0::3])),
                                    tuple(map(float, x_y_id_s[1::3]))])
             point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
-            images[image_id] = GImage(
+            images[image_id] = ColmapImage(
                 uid=image_id, qvec=qvec, tvec=tvec,
                 camera_id=camera_id, name=image_name,
                 xys=xys, point3D_ids=point3D_ids)
@@ -74,7 +140,7 @@ def read_intrinsics_binary(path_to_model_file):
             num_params = GCAMERA_MODEL_IDS[model_id].num_params
             params = read_next_bytes(fid, num_bytes=8*num_params,
                                      format_char_sequence="d"*num_params)
-            cameras[camera_id] = GCamera(uid=camera_id,
+            cameras[camera_id] = ColmapCamera(uid=camera_id,
                                         model=model_name,
                                         width=width,
                                         height=height,
@@ -101,7 +167,7 @@ def read_intrinsics_text(path):
                 width = int(elems[2])
                 height = int(elems[3])
                 params = np.array(tuple(map(float, elems[4:])))
-                cameras[camera_id] = GCamera(uid=camera_id, model=model,
+                cameras[camera_id] = ColmapCamera(uid=camera_id, model=model,
                                             width=width, height=height,
                                             params=params)
     return cameras
@@ -128,52 +194,47 @@ def read_extrinsics_text(path):
                 xys = np.column_stack([tuple(map(float, elems[0::3])),
                                        tuple(map(float, elems[1::3]))])
                 point3D_ids = np.array(tuple(map(int, elems[2::3])))
-                images[image_id] = GImage(
+                images[image_id] = ColmapImage(
                     uid=image_id, qvec=qvec, tvec=tvec,
                     camera_id=camera_id, name=image_name,
                     xys=xys, point3D_ids=point3D_ids)
     return images
 
-def read_colmap_cameras(cam_extrinsics, cam_intrinsics, images_folder):
-    cam_infos = []
-    # for key, value in tqdm(cam_extrinsics.items(), desc="Reading camera"):
-    for key, value in cam_extrinsics.items():
-        extr = cam_extrinsics[key]
-        intr = cam_intrinsics[extr.camera_id]
-        if intr.model=="SIMPLE_PINHOLE":
-            focal_length_x = intr.params[0]
-            FovY = focal2fov(focal_length_x, intr.height)
-            FovX = focal2fov(focal_length_x, intr.width)
-        elif intr.model=="PINHOLE":
-            focal_length_x = intr.params[0]
-            focal_length_y = intr.params[1]
-            FovY = focal2fov(focal_length_y, intr.height)
-            FovX = focal2fov(focal_length_x, intr.width)
-        else:
-            assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
-        image_path = Path(images_folder) / extr.name
-        image = Image.open(str(image_path))
-        
-        cam_info = GCameraInfo(uid=intr.uid, R=extr.R, T=extr.T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=extr.name, width=intr.width, height=intr.height)
-        cam_infos.append(cam_info)
+def process_camera_image_pair(idx, extr, intr, images_folder):
+    if intr.model=="SIMPLE_PINHOLE":
+        focal_length_x = intr.params[0]
+        fov_y = focal2fov(focal_length_x, intr.height)
+        fov_x = focal2fov(focal_length_x, intr.width)
+    elif intr.model=="PINHOLE":
+        focal_length_x = intr.params[0]
+        focal_length_y = intr.params[1]
+        fov_y = focal2fov(focal_length_y, intr.height)
+        fov_x = focal2fov(focal_length_x, intr.width)
+    else:
+        assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
+    
+    camera = BasicCamera(R=extr.R, T=extr.T, fov_y=fov_y, fov_x=fov_x, width=intr.width, height=intr.height,
+                        uid=intr.uid)
+    image_path = Path(images_folder) / extr.name
+    image = BasicImage(data = Image.open(str(image_path)), path=image_path, name=extr.name)
+    cam_img_pair = CameraImagePair(cam=camera, img = image, uid=idx)
+    return cam_img_pair
 
-    return cam_infos
+def get_colmap_camera_image_pair_list(cam_extrinsics, cam_intrinsics, images_folder):
+    cam_img_pair_list = []
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for idx, key in enumerate(cam_extrinsics.keys()):
+            extr = cam_extrinsics[key]
+            intr = cam_intrinsics[extr.camera_id]
+            futures.append(executor.submit(process_camera_image_pair, idx, extr, intr, images_folder))
 
-def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
-    Rt = np.zeros((4, 4))
-    Rt[:3, :3] = R.transpose()
-    Rt[:3, 3] = t
-    Rt[3, 3] = 1.0
+        for future in tqdm(futures, total=len(futures)):
+            cam_img_pair_list.append(future.result())
 
-    C2W = np.linalg.inv(Rt)
-    cam_center = C2W[:3, 3]
-    cam_center = (cam_center + translate) * scale
-    C2W[:3, 3] = cam_center
-    Rt = np.linalg.inv(C2W)
-    return np.float32(Rt)
+    return cam_img_pair_list
 
-def get_spatial_scale(cam_info):
+def get_spatial_scale(cam_image_pair_list):
     def get_center_and_diag(cam_centers):
         cam_centers = np.hstack(cam_centers)
         avg_cam_center = np.mean(cam_centers, axis=1, keepdims=True)
@@ -184,8 +245,9 @@ def get_spatial_scale(cam_info):
 
     cam_centers = []
 
-    for cam in cam_info:
-        W2C = getWorld2View2(cam.R, cam.T)
+    for cam_image_pair in cam_image_pair_list:
+        cam = cam_image_pair.camera
+        W2C = getWorld2View(cam.R, cam.T)
         C2W = np.linalg.inv(W2C)
         cam_centers.append(C2W[:3, 3:4])
 
@@ -195,8 +257,6 @@ def get_spatial_scale(cam_info):
     translate = -center
 
     return {"translate": translate, "radius": radius}
-
-
 
 def read_points3D_binary(path_to_model_file):
     """
@@ -296,31 +356,25 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def load_colmap_folder(path, eval, llffhold=8):
+def load_colmap_folder(colmap_folder):
     try:
-        cameras_extrinsic_file = Path(path) / "sparse" / "0" / "images.bin"
-        cameras_intrinsic_file = Path(path) / "sparse" / "0" / "cameras.bin"
+        cameras_extrinsic_file = Path(colmap_folder) / "sparse" / "0" / "images.bin"
+        cameras_intrinsic_file = Path(colmap_folder) / "sparse" / "0" / "cameras.bin"
         cam_extrinsics = read_extrinsics_binary(str(cameras_extrinsic_file))
         cam_intrinsics = read_intrinsics_binary(str(cameras_intrinsic_file))
     except:
-        cameras_extrinsic_file = Path(path) / "sparse" / "0" / "images.txt"
-        cameras_intrinsic_file = Path(path) / "sparse" / "0" / "cameras.txt"
+        cameras_extrinsic_file = Path(colmap_folder) / "sparse" / "0" / "images.txt"
+        cameras_intrinsic_file = Path(colmap_folder) / "sparse" / "0" / "cameras.txt"
         cam_extrinsics = read_extrinsics_text(str(cameras_extrinsic_file))
         cam_intrinsics = read_intrinsics_text(str(cameras_intrinsic_file))
-    images_folder = Path(path) / "images"
-    cam_infos_unsorted = read_colmap_cameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=images_folder)
-    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
-    if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
-    else:
-        train_cam_infos = cam_infos
-        test_cam_infos = []
-    spatial_scale = get_spatial_scale(train_cam_infos)
+    images_folder = Path(colmap_folder) / "images"
+    pair_list_unsorted = get_colmap_camera_image_pair_list(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=images_folder)
+    pair_list = sorted(pair_list_unsorted.copy(), key = lambda x : x.image.name)
 
-    ply_path = str(Path(path) / "sparse" / "0" / "points3D.ply")
-    bin_path = str(Path(path) / "sparse" / "0" / "points3D.bin")
-    txt_path = str(Path(path) / "sparse" / "0" / "points3D.txt")
+
+    ply_path = str(Path(colmap_folder) / "sparse" / "0" / "points3D.ply")
+    bin_path = str(Path(colmap_folder) / "sparse" / "0" / "points3D.bin")
+    txt_path = str(Path(colmap_folder) / "sparse" / "0" / "points3D.txt")
     if not Path(ply_path).exists():
         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
         try:
@@ -332,9 +386,6 @@ def load_colmap_folder(path, eval, llffhold=8):
         pcd = fetchPly(ply_path)
     except:
         pcd = None
-    scene_info = GDataset(point_cloud=pcd,
-                           train_cameras=train_cam_infos,
-                           test_cameras=test_cam_infos,
-                           spatial_scale=spatial_scale,
-                           ply_path=ply_path)
-    return scene_info
+
+    return pcd, pair_list, ply_path
+

@@ -23,13 +23,10 @@ class ExperimentConfig:
     n_gpus: int = 1
     ###
 
-    resume: Optional[str] = None
     data_type: str = ""
     data: dict = field(default_factory=dict)
     system_type: str = ""
     system: dict = field(default_factory=dict)
-    trainer_type: str = ""
-    trainer: dict = field(default_factory=dict)
     checkpoint: dict = field(default_factory=dict)
     logger: dict = field(default_factory=dict)
     

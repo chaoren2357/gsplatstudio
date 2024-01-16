@@ -1,4 +1,3 @@
-
 import gsplatstudio
 from gsplatstudio.utils.type_utils import *
 from gsplatstudio.data.processor.base_processor import BaseDataProcessor
@@ -28,8 +27,7 @@ class ColmapProcessor(BaseDataProcessor):
         points3D_file = Path(self.source_path_str) / "sparse" / "0" / "points3D.bin"
         return cameras_file.exists() and images_file.exists() and points3D_file.exists()
             
-    def run(self):
-        self.logger.info("Start data processor ColmapProcessor...")
+    def _run(self):
         sparse_path = Path(self.source_path_str) / "distorted" / "sparse"
         sparse_path.mkdir(parents=True, exist_ok=True)
         
@@ -89,8 +87,6 @@ class ColmapProcessor(BaseDataProcessor):
             source_file = file
             destination_file = destination_path / file.name
             source_file.rename(destination_file)
-
-        self.logger.info(f"Finish data processing, source path: {self.source_path_str}")
     
 
 

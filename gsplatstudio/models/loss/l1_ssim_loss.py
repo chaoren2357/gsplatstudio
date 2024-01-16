@@ -1,18 +1,28 @@
-#
-# Copyright (C) 2023, Inria
-# GRAPHDECO research group, https://team.inria.fr/graphdeco
-# All rights reserved.
-#
-# This software is free for non-commercial, research and evaluation use 
-# under the terms of the LICENSE.md file.
-#
-# For inquiries contact  george.drettakis@inria.fr
-#
-
+import gsplatstudio
 import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
+from gsplatstudio.utils.type_utils import *
+from gsplatstudio.models.loss.base_loss import BaseLoss
+
+@dataclass
+class L1WithSSIMLossConfig:
+    lambda_dssim: float = 0.2
+
+@gsplatstudio.register("l1+ssim-loss")
+class L1WithSSIMLoss(BaseLoss):
+    
+    @property
+    def config_class(self):
+        return L1WithSSIMLossConfig
+
+    def forward(self,predict,gt):
+        value = (1.0 - self.cfg.lambda_dssim) * l1_loss(predict,gt) + self.cfg.lambda_dssim * (1.0 - ssim(predict,gt))
+        self.value = value
+        return value
+
+
 
 def l1_loss(network_output, gt):
     return torch.abs((network_output - gt)).mean()
@@ -62,3 +72,9 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
     else:
         return ssim_map.mean(1).mean(1).mean(1)
 
+def mse(img1, img2):
+    return (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
+
+def psnr(img1, img2):
+    mse = (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
+    return 20 * torch.log10(1.0 / torch.sqrt(mse))

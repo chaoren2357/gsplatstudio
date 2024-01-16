@@ -1,5 +1,5 @@
 from . import(
     base_processor,
     colmap_processor,
-    colmapWcam_processor
+    colmap_with_cam_processor
 )

@@ -1,11 +1,11 @@
 import torch
 import gsplatstudio
-from gsplatstudio.utils.general_utils import build_rotation, inverse_sigmoid
+from gsplatstudio.utils.gaussian_utils import build_rotation, inverse_sigmoid
 from gsplatstudio.utils.type_utils import *
-from gsplatstudio.utils.config import parse_structured
+from gsplatstudio.models.structOptim.base_structOptim import BaseStructOptim
 
 @dataclass
-class splitAcloneApruneConfig:
+class SplitWithCloneWithPruneConfig:
     max_sh_drgree: int = 3
     percent_dense: float = 0.01
     opacity_reset_interval: int = 3000
@@ -13,14 +13,16 @@ class splitAcloneApruneConfig:
     densify_until_iter: int = 15000
     densify_grad_threshold: float = 0.0002
     densification_interval: int = 100
-    size_threshold: int = 20
     min_opacity: float = 0.005
     num_split: int = 2
+    size_threshold: int = 20
 
-@gsplatstudio.register("split.clone.prune-structOptim")
-class splitAcloneAprune:
-    def __init__(self, cfg):
-        self.cfg = parse_structured(splitAcloneApruneConfig, cfg)
+@gsplatstudio.register("split+clone+prune-structOptim")
+class SplitWithCloneWithPrune(BaseStructOptim):
+    
+    @property
+    def config_class(self):
+        return SplitWithCloneWithPruneConfig
 
     @property
     def state(self):
@@ -30,17 +32,17 @@ class splitAcloneAprune:
             self.denom  
         )
     
-    def restore(self, state, spatial_lr_scale):
+    def _restore(self, state, spatial_lr_scale):
         (self.max_radii2D,
         self.xyz_gradient_accum,
         self.denom) = state
         self.spatial_lr_scale = spatial_lr_scale
 
-    def init_optim(self,model, spatial_lr_scale):
+    def init_optim(self, model, spatial_lr_scale):
         self.spatial_lr_scale = spatial_lr_scale
         self.reset_stats(model)      
         
-    def update(self, iteration, model, paramOptim, render_pkg, is_white_background):
+    def update_optim(self, iteration, model, paramOptim, render_pkg, is_white_background):
         viewspace_point_tensor, visibility_filter, radii = render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
         if iteration < self.cfg.densify_until_iter:
             # Keep track of max radii in image-space for pruning

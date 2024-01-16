@@ -1,14 +1,13 @@
-
 import math
 import torch
 import gsplatstudio
-from gsplatstudio.utils.config import parse_structured
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
 from gsplatstudio.utils.sh_utils import eval_sh
 from gsplatstudio.utils.type_utils import *
+from gsplatstudio.models.renderer.base_renderer import BaseRenderer
 
 @dataclass
-class DiffRasterizerConfig:
+class DiffRasterizerRendererConfig:
     background_color: list = field(default_factory=list)
     scaling_modifier: float = 1.0
     debug: bool = False
@@ -16,12 +15,15 @@ class DiffRasterizerConfig:
     convert_SHs_python: bool = False
     prefiltered: bool = False
     override_color: list = field(default_factory=list)
+    use_full_opacity: bool = False
     
 
 @gsplatstudio.register("diffRasterizer-renderer")
-class DiffRasterizer:
-    def __init__(self,cfg):
-        self.cfg = parse_structured(DiffRasterizerConfig, cfg)
+class DiffRasterizerRenderer(BaseRenderer):
+    
+    @property
+    def config_class(self):
+        return DiffRasterizerRendererConfig
     
     @property
     def background_color(self):
@@ -30,7 +32,7 @@ class DiffRasterizer:
         else:
             return torch.tensor(self.cfg.background_color, dtype=torch.float32, device="cuda")
 
-    def render(self,model,camera):
+    def render(self, model, camera):
         """
         Render the scene. 
         Background tensor (bg_color) must be on GPU!
@@ -44,12 +46,12 @@ class DiffRasterizer:
             pass
 
         # Set up rasterization configuration
-        tanfovx = math.tan(camera.FoVx * 0.5)
-        tanfovy = math.tan(camera.FoVy * 0.5)
+        tanfovx = math.tan(camera.fov_x * 0.5)
+        tanfovy = math.tan(camera.fov_y * 0.5)
 
         raster_settings = GaussianRasterizationSettings(
-            image_height=int(camera.image_height),
-            image_width=int(camera.image_width),
+            image_height=int(camera.height),
+            image_width=int(camera.width),
             tanfovx=tanfovx,
             tanfovy=tanfovy,
             bg=self.background_color,
@@ -66,7 +68,10 @@ class DiffRasterizer:
 
         means3D = model.xyz
         means2D = screenspace_points
-        opacity = model.opacity
+        if self.cfg.use_full_opacity:
+            opacity = torch.ones_like(model.opacity, dtype=model.opacity.dtype, requires_grad=False, device="cuda")
+        else:
+            opacity = model.opacity
 
         # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
         # scaling / rotation by the rasterizer.
