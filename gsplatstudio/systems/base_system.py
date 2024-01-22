@@ -6,18 +6,12 @@ from gsplatstudio.utils.recorder import Recorder
 
 @dataclass
 class BaseSystemConfig:
-    representation_type: str
-    representation: str
-    trainer_type: str
-    trainer: str
-    paramOptim_type: str
-    paramOptim: str
-    structOptim_type: str
-    structOptim:str
-    loss_type: str
-    loss: str
-    renderer_type: str
-    renderer: str
+    representations: list = field(default_factory=list)
+    trainers: list = field(default_factory=list)
+    paramOptims: list = field(default_factory=list)
+    structOptims:list = field(default_factory=list)
+    losses: list = field(default_factory=list)
+    renderers: list = field(default_factory=list)
     recorder: str
 
 class BaseSystem(ABC):
@@ -25,12 +19,25 @@ class BaseSystem(ABC):
     def __init__(self, cfg, logger):
         self.cfg = parse_structured(self.config_class, cfg)
         self.logger = logger
-        self.model = gsplatstudio.find(self.cfg.representation_type)(self.cfg.representation, self.logger)
-        self.loss = gsplatstudio.find(self.cfg.loss_type)(self.cfg.loss, self.logger)
-        self.trainer = gsplatstudio.find(self.cfg.trainer_type)(self.cfg.trainer, self.logger)
-        self.paramOptim = gsplatstudio.find(self.cfg.paramOptim_type)(self.cfg.paramOptim, self.logger)
-        self.structOptim = gsplatstudio.find(self.cfg.structOptim_type)(self.cfg.structOptim, self.logger)
-        self.renderer = gsplatstudio.find(self.cfg.renderer_type)(self.cfg.renderer, self.logger)
+        for representation_cfg in self.cfg.representations:
+            representation = gsplatstudio.find(representation_cfg.type)(representation_cfg.params, self.logger)
+            setattr(self, representation_cfg.id, representation)
+        for loss_cfg in self.cfg.losses:
+            loss = gsplatstudio.find(loss_cfg.type)(loss_cfg.params, self.logger)
+            setattr(self, loss_cfg.id, loss)
+        for trainer_cfg in self.cfg.trainers:
+            trainer = gsplatstudio.find(trainer_cfg.type)(trainer_cfg.params, self.logger)
+            setattr(self, trainer_cfg.id, trainer)
+        for paramOptim_cfg in self.cfg.paramOptims:
+            paramOptim = gsplatstudio.find(paramOptim_cfg.type)(paramOptim_cfg.params, self.logger)
+            setattr(self, paramOptim_cfg.id, paramOptim)
+        for structOptim_cfg in self.cfg.structOptims:
+            structOptim = gsplatstudio.find(structOptim_cfg.type)(structOptim_cfg.params, self.logger)
+            setattr(self, structOptim_cfg.id, structOptim)
+        for renderer_cfg in self.cfg.renderers:
+            renderer = gsplatstudio.find(renderer_cfg.type)(renderer_cfg.params, self.logger)
+            setattr(self, renderer_cfg.id, renderer)
+
         self.recorder = Recorder(self.cfg.recorder)
     
     @property
@@ -49,13 +56,9 @@ class BaseSystem(ABC):
         self.trainer.restore_components(system_path, iteration)
 
     def _load(self, data, dirs):
+        self.data = data
         self.recorder.init_components(log_dir = dirs["log_dir"], max_iter = self.trainer.cfg.iterations)
-        self.trainer.init_components(
-                    recorder = self.recorder, 
-                    data = data, model = self.model, 
-                    loss = self.loss, renderer = self.renderer,
-                    paramOptim = self.paramOptim, structOptim = self.structOptim,
-                    dirs = dirs)
+        self.trainer.init_components(recorder = self.recorder, dirs = dirs)
         self.trainer.setup_components()
         # Save cfg_args
         namespace_str = f"Namespace(data_device='{data.cfg.device}', \

@@ -29,14 +29,7 @@ class BaseTrainer(ABC):
     def restore_components(self,system_path):
         pass
 
-    def init_components(self, recorder, data, model, loss, structOptim, paramOptim, renderer, dirs, **kwargs):
-        self.recorder = recorder
-        self.data = data
-        self.model = model
-        self.loss = loss
-        self.structOptim = structOptim
-        self.paramOptim = paramOptim
-        self.renderer = renderer
+    def init_components(self, dirs, **kwargs):
         for key, value in dirs.items():
             setattr(self, key, value)
         for key, value in kwargs.items():
@@ -44,7 +37,7 @@ class BaseTrainer(ABC):
 
 
     @abstractmethod
-    def train(self):
+    def train(self, data, model, recorder):
         pass
 
 
