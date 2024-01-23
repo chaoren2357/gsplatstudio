@@ -1,4 +1,4 @@
-name: "gsplat_vanilla"
+name: "test"
 tag: "test"
 exp_root_dir: "outputs"
 seed: 0
@@ -12,60 +12,93 @@ data:
     camera: "OPENCV"
     map_ba_global_function_tolerance: 0.000001
   source_path: '/mnt/d/data/carla/processed/Sky_test'
-  eval: False
-  data_device: 'cuda'
+  eval: 0
+  device: 'cuda'
   resolution: -1
   resolution_scales: [1.0]
   shuffle: True
-system_type: "vanilla-gsplat"
+system_type: "vanilla-system"
 system: 
-  representation_type: "gaussian-model"
-  representation:
-    max_sh_degree: 3
-  trainer_type: "gaussian-trainer"
-  trainer:
-    detect_anomaly: False
-    iterations: 30000
-    save_iterations: [7000, 30000]
-    test_iterations: [7000, 30000]
-    ckpt_iterations: [7000, 20000, 30000]
-  paramOptim_type: "adam+customLR-paramOptim"
-  paramOptim:
-    position_lr_delay_mult: 0.01
-    position_lr_final: 1.6e-06
-    position_lr_init: 0.00016
-    position_lr_max_steps: 30000
-    feature_lr: 0.0025
-    rotation_lr: 0.001
-    scaling_lr: 0.005
-    opacity_lr: 0.05
-  structOptim_type: "split.clone.prune-structOptim"
-  structOptim:
-    max_sh_drgree: 3
-    percent_dense: 0.01
-    opacity_reset_interval: 3000
-    densify_from_iter: 500
-    densify_until_iter: 15000
-    densify_grad_threshold: 0.0002
-    densification_interval: 100
-    size_threshold: 20
-    min_opacity: 0.005
-    num_split: 2
-  loss_type: "l1+ssim-loss"
-  loss:
-    lambda_dssim: 0.2
-  renderer_type: "diffRasterizer-renderer"
-  renderer:
-    background_color: [0,0,0]
-    debug: False
-    compute_cov3D_python: False
-    convert_SHs_python: False
-    scaling_modifier: 1.0
-    prefiltered: False
-    override_color: [-1,-1,-1]
+  representations:
+    - id: "representation"
+      type: "gaussian-representation"
+      params: 
+        max_sh_degree: 3
+  
+  trainers:
+    - id: "trainer"
+      type: "vanilla-trainer"
+      params: 
+        detect_anomaly: False
+        iterations: 10000
+        save_iterations: [10000]
+    - id: "trainer2"
+      type: "vanilla-trainer"
+      params: 
+        detect_anomaly: False
+        iterations: 15000
+        save_iterations: [15000]
+  paramOptims:
+    - id: "paramOptim"
+      type: "adam+customLR-paramOptim"
+      params: 
+        position_lr_delay_mult: 0.01
+        position_lr_final: 1.6e-06
+        position_lr_init: 0.00016
+        position_lr_max_steps: 30000
+        feature_lr: 0.0025
+        rotation_lr: 0.001
+        scaling_lr: 0.005
+        opacity_lr: 0.05
+  
+  structOptims:
+    - id: "structOptim"
+      type: "split+clone+prune-structOptim"
+      params: 
+        percent_dense: 0.01
+        opacity_reset_interval: 1000
+        densify_from_iter: 500
+        densify_until_iter: 15000
+        densify_grad_threshold: 0.0002
+        densification_interval: 100
+        size_threshold: 20
+        min_opacity: 0.005
+        num_split: 2
+  
+  losses:
+    - id: "loss"
+      type: "l1+ssim-loss"
+      params: 
+        lambda_dssim: 0.2
+  
+  renderers:
+    - id: "renderer"
+      type: "diffRasterizer-renderer"
+      params: 
+        background_color: [0,0,0]
+        debug: False
+        compute_cov3D_python: False
+        convert_SHs_python: False
+        scaling_modifier: 1.0
+        prefiltered: False
+        override_color: [-1,-1,-1]
+  
+  recorder:
+    - name: "ema_loss_for_log"
+      value_type: "number"
+      plot_type: "line_chart"
+      save_intervals: 1000
+    - name: "loss"
+      value_type: "number"
+      plot_type: "line_chart"
+      save_intervals: 1000
+    - name: "num_points"
+      value_type: "number"
+      plot_type: "line_chart"
+      save_intervals: 500
 
 checkpoint:
-  use: True
+  use: False
   iteration: 7000
   data_path: "/mnt/d/code/gsplatstudio/outputs/gsplat_vanilla/test@20240105-135544/results/"
   system_path: "/mnt/d/code/gsplatstudio/outputs/gsplat_vanilla/test@20240105-135544/ckpts/"

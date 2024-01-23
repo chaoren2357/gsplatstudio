@@ -23,29 +23,34 @@ class VanillaTrainer(BaseTrainer):
     def state(self):
         return {
             "data": self.data.spatial_scale,
-            "model": self.model.state,
+            "representation": self.representation.state,
             "structOptim": self.structOptim.state,
             "paramOptim": self.paramOptim.state,
             "iteration": self.iteration
         }
     
-    def setup_components(self):
-
+    def setup_components(self, data, representation, loss, paramOptim, renderer, structOptim, first_iteration):
+        self.data = data
+        self.representation = representation
+        self.loss = loss
+        self.paramOptim = paramOptim
+        self.renderer = renderer
+        self.structOptim = structOptim
+        self.first_iteration = first_iteration
+        self.cfg.save_iterations = [self.first_iteration + i for i in self.cfg.save_iterations]
+        
         spatial_lr_scale = self.data.spatial_scale
         
-        # init model from data
-        self.model.init_from_pcd(self.data.point_cloud, spatial_lr_scale)
+        # init representation from data
+        self.representation.init_from_pcd(self.data.point_cloud, spatial_lr_scale)
         
-        # init paramOptim from model
-        param_lr_group = self.model.create_param_lr_groups(self.paramOptim.cfg)
+        # init paramOptim from representation
+        param_lr_group = self.representation.create_param_lr_groups(self.paramOptim.cfg)
         self.paramOptim.init_optim(param_lr_group, spatial_lr_scale, self.cfg.iterations)
         
-        # init structOptim from model
-        self.structOptim.init_optim(self.model, spatial_lr_scale)
+        # init structOptim from representation
+        self.structOptim.init_optim(self.representation, spatial_lr_scale)
 
-        # init progress bar
-        self.progress_bar = ProgressBar(first_iter=0, total_iters=self.cfg.iterations)
-    
     def restore_components(self, system_path, iteration):
         ckpt_path = Path(system_path) / f"{iteration}.pth"
         try:
@@ -53,12 +58,12 @@ class VanillaTrainer(BaseTrainer):
             spatial_lr_scale = ckpt_dict["data"]
             
             pcd_path = Path(self.view_dir) / "point_cloud" / f"iteration_{iteration}" / "point_cloud.ply"
-            self.model.load_ply(str(pcd_path))
-            self.model.restore(state = ckpt_dict["model"], spatial_lr_scale = spatial_lr_scale)
+            self.representation.load_ply(str(pcd_path))
+            self.representation.restore(state = ckpt_dict["representation"], spatial_lr_scale = spatial_lr_scale)
             
             self.structOptim.restore(state = ckpt_dict["structOptim"], spatial_lr_scale = spatial_lr_scale)
             
-            param_lr_group = self.model.create_param_lr_groups(self.paramOptim.cfg)
+            param_lr_group = self.representation.create_param_lr_groups(self.paramOptim.cfg)
             self.paramOptim.restore(state = ckpt_dict["paramOptim"], spatial_lr_scale = spatial_lr_scale, param_lr_group = param_lr_group, max_iter = self.cfg.iterations)
             
             self.first_iteration = ckpt_dict["iteration"] + 1
@@ -70,16 +75,14 @@ class VanillaTrainer(BaseTrainer):
             self.setup_components()
 
     def train(self) -> None:
-
         ema_loss_for_log = 0.0
         viewpoint_stack = None
         is_white_background = self.renderer.background_color == [255,255,255]
-        
-        for iteration in range(self.first_iteration, self.cfg.iterations + 1):    
+        for iteration in range(self.first_iteration, self.first_iteration + self.cfg.iterations + 1):    
             self.paramOptim.update_lr(iteration)
             # Every 1000 its we increase the levels of SH up to a maximum degree
             if iteration % 1000 == 0:
-                self.model.increment_sh_degree()
+                self.representation.increment_sh_degree()
 
             # Pick a random Camera
             if not viewpoint_stack:
@@ -87,7 +90,7 @@ class VanillaTrainer(BaseTrainer):
             viewpoint_pair = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
             # Render
-            render_pkg = self.renderer.render(model = self.model, camera = viewpoint_pair.camera)
+            render_pkg = self.renderer.render(representation = self.representation, camera = viewpoint_pair.camera)
 
             # Loss
             gt_image = viewpoint_pair.image.get_resolution_data_from_path(self.data.cfg.resolution, self.data.cfg.resolution_scales[0])
@@ -107,7 +110,7 @@ class VanillaTrainer(BaseTrainer):
                     self.save_scene(iteration)
 
                 # Densification
-                self.structOptim.update_optim(iteration, self.model, self.paramOptim, render_pkg, is_white_background)
+                self.structOptim.update_optim(iteration, self.representation, self.paramOptim, render_pkg, is_white_background)
                 
                 # Optimizer step
                 self.paramOptim.update_optim(iteration)

@@ -23,7 +23,7 @@ class Experiment:
 
     def _prepare_experiment_folders(self,config_path):
         # Code duplicate
-        excluded_dirs = {'configs', 'outputs', 'viewer', '__pycache__', 'submodules'}
+        excluded_dirs = {'configs', 'outputs', 'viewer', '__pycache__', 'submodules', 'docs', 'assets'}
         excluded_files = {'README.md'}
         self.code_dir = Path(self.cfg.trial_dir) / 'code'
         self.code_dir.mkdir(parents=True, exist_ok=True)

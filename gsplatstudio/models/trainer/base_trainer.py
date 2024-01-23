@@ -29,7 +29,9 @@ class BaseTrainer(ABC):
     def restore_components(self,system_path):
         pass
 
-    def init_components(self, dirs, **kwargs):
+    def init_components(self, recorder, progress_bar, dirs, **kwargs):
+        self.recorder = recorder
+        self.progress_bar = progress_bar
         for key, value in dirs.items():
             setattr(self, key, value)
         for key, value in kwargs.items():
@@ -37,7 +39,7 @@ class BaseTrainer(ABC):
 
 
     @abstractmethod
-    def train(self, data, model, recorder):
+    def train(self):
         pass
 
 
@@ -50,7 +52,7 @@ class BaseTrainer(ABC):
         self.logger.info(f"Saving Gaussians in ITER {iteration}")
         ply_path = Path(self.view_dir) / f"point_cloud/iteration_{iteration}" / "point_cloud.ply"
         ply_path.parent.mkdir(parents=True, exist_ok=True)
-        self.model.save_ply(ply_path)
+        self.representation.save_ply(ply_path)
     
     def set(self, name, value):
         setattr(self, name, value)

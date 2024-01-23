@@ -23,7 +23,7 @@ class Recorder:
             self.cfgs.update({cfg.name: cfg})
             self.data.update({cfg.name: []})
         
-    def init_components(self, log_dir, first_iter, max_iter):
+    def init_components(self, log_dir, max_iter, first_iter=0):
         for cfg in self.cfgs.values():
             # update save_folder
             save_folder = Path(log_dir) / f"{cfg.name}"

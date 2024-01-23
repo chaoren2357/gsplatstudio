@@ -27,7 +27,7 @@ class BaseStructOptim(ABC):
         pass
         
     @abstractmethod 
-    def update_optim(self, iteration, model, paramOptim, render_pkg, **kwargs):
+    def update_optim(self, iteration, representation, paramOptim, render_pkg, **kwargs):
         pass
 
     def restore(self, state, **kwargs):

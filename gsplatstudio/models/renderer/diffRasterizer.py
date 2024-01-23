@@ -32,14 +32,14 @@ class DiffRasterizerRenderer(BaseRenderer):
         else:
             return torch.tensor(self.cfg.background_color, dtype=torch.float32, device="cuda")
 
-    def render(self, model, camera):
+    def render(self, representation, camera):
         """
         Render the scene. 
         Background tensor (bg_color) must be on GPU!
         """
     
         # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
-        screenspace_points = torch.zeros_like(model.xyz, dtype=model.xyz.dtype, requires_grad=True, device="cuda") + 0
+        screenspace_points = torch.zeros_like(representation.xyz, dtype=representation.xyz.dtype, requires_grad=True, device="cuda") + 0
         try:
             screenspace_points.retain_grad()
         except:
@@ -58,7 +58,7 @@ class DiffRasterizerRenderer(BaseRenderer):
             scale_modifier=self.cfg.scaling_modifier,
             viewmatrix=camera.world_view_transform,
             projmatrix=camera.full_proj_transform,
-            sh_degree=model.sh_degree,
+            sh_degree=representation.sh_degree,
             campos=camera.camera_center,
             prefiltered=self.cfg.prefiltered,
             debug=self.cfg.debug
@@ -66,12 +66,12 @@ class DiffRasterizerRenderer(BaseRenderer):
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-        means3D = model.xyz
+        means3D = representation.xyz
         means2D = screenspace_points
         if self.cfg.use_full_opacity:
-            opacity = torch.ones_like(model.opacity, dtype=model.opacity.dtype, requires_grad=False, device="cuda")
+            opacity = torch.ones_like(representation.opacity, dtype=representation.opacity.dtype, requires_grad=False, device="cuda")
         else:
-            opacity = model.opacity
+            opacity = representation.opacity
 
         # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
         # scaling / rotation by the rasterizer.
@@ -79,10 +79,10 @@ class DiffRasterizerRenderer(BaseRenderer):
         rotations = None
         cov3D_precomp = None
         if self.cfg.compute_cov3D_python:
-            cov3D_precomp = model.covariance(self.cfg.scaling_modifier)
+            cov3D_precomp = representation.covariance(self.cfg.scaling_modifier)
         else:
-            scales = model.scaling
-            rotations = model.rotation
+            scales = representation.scaling
+            rotations = representation.rotation
 
         # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
         # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.
@@ -90,13 +90,13 @@ class DiffRasterizerRenderer(BaseRenderer):
         colors_precomp = None
         if self.cfg.override_color == [-1,-1,-1]:
             if self.cfg.convert_SHs_python:
-                shs_view = model.features.transpose(1, 2).view(-1, 3, (model.max_sh_degree+1)**2)
-                dir_pp = (model.xyz - camera.camera_center.repeat(model.features.shape[0], 1))
+                shs_view = representation.features.transpose(1, 2).view(-1, 3, (representation.max_sh_degree+1)**2)
+                dir_pp = (representation.xyz - camera.camera_center.repeat(representation.features.shape[0], 1))
                 dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
-                sh2rgb = eval_sh(model.sh_degree, shs_view, dir_pp_normalized)
+                sh2rgb = eval_sh(representation.sh_degree, shs_view, dir_pp_normalized)
                 colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
             else:
-                shs = model.features
+                shs = representation.features
         else:
             colors_precomp = self.cfg.override_color
 

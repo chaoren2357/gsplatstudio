@@ -14,5 +14,5 @@ class BaseRenderer(ABC):
         pass
 
     @abstractmethod
-    def render(self, model, camera):
+    def render(self, representation, camera):
         pass
